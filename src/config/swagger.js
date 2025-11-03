@@ -139,7 +139,9 @@ const options = {
     }
   },
   apis: [
-    './src/routes/authRoutes.js'
+    './src/routes/authRoutes.js',
+    './src/routes/permissionRoutes.js',
+    './src/routes/whatsappRoutes.js'
   ]
 };
 

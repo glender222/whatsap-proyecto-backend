@@ -5,6 +5,13 @@ const { validateJWT, requireAdmin } = require('../middleware/authMiddleware');
 const router = express.Router();
 const permissionController = new PermissionController();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Permisos
+ *   description: API para gestionar permisos de chat para los empleados.
+ */
+
 // Todas las rutas en este archivo requieren que el usuario sea un ADMIN autenticado.
 router.use(validateJWT, requireAdmin);
 
