@@ -1,312 +1,169 @@
-# WhatsApp Web API# 💬 WhatsApp Web API
+# 💬 WhatsApp Web API
 
+Una API REST moderna y multi-agente para gestionar WhatsApp Web con Socket.IO en tiempo real.
+🟩 **Node.js + Express + Socket.IO**
 
+## 🚀 Características
 
-Una API REST moderna para gestionar WhatsApp Web con Socket.IO en tiempo real.🟩 **Node.js + Express + Socket.IO**
+Sistema completo para interactuar con WhatsApp Web desde un servidor Node.js: envío y recepción de mensajes, manejo de archivos multimedia, perfiles y comunicación en tiempo real.
 
+- ✅ **Arquitectura Multi-Agente:** Permite que un administrador conecte una cuenta de WhatsApp y asigne chats específicos a diferentes empleados/estaciones de trabajo.
+- ✅ **Sistema de Permisos Robusto:** Control granular sobre qué empleado puede ver y responder a qué chat.
+- ✅ **API REST Semántica y Segura:** Endpoints claros con autenticación JWT y roles (Admin/Empleado).
+- ✅ **Comunicación en Tiempo Real con Socket.IO:** Notificaciones instantáneas de nuevos mensajes solo a los usuarios autorizados.
 
+---
 
-## 🚀 CaracterísticasSistema completo para interactuar con WhatsApp Web desde un servidor Node.js:  
+## 🚀 Sistema Multi-Agente y Gestión de Permisos
 
-envío y recepción de mensajes, manejo de archivos multimedia, perfiles y comunicación en tiempo real.
+Esta API ahora funciona como una plataforma multi-agente. El flujo de trabajo está diseñado para que un **Administrador (rol `ADMIN`)** controle la sesión de WhatsApp y gestione los permisos de sus **Empleados (rol `EMPLEADO`)**.
 
-- ✅ **Arquitectura profesional** con separación de responsabilidades
+### Flujo de Trabajo (Admin y Empleados)
 
-- ✅ **API REST** semántica y bien organizada## 🆕 **Últimas Mejoras (v2.0)**
+1.  **Registro y Login del Admin:** Un administrador se registra y obtiene sus tokens de autenticación.
+2.  **Inicialización de WhatsApp (¡Nuevo!):** El admin **debe** llamar al nuevo endpoint `POST /api/whatsapp/init` para iniciar la conexión con WhatsApp y generar el QR.
+3.  **Creación de Empleados:** El admin crea cuentas para sus empleados (`POST /api/auth/create-station`).
+4.  **Asignación de Chats:** Una vez que WhatsApp está conectado, el admin usa los nuevos endpoints de permisos para asignar chats específicos a cada empleado.
+5.  **Login del Empleado:** El empleado inicia sesión con sus credenciales.
+6.  **Acceso Limitado:** El empleado ahora puede usar la API y los sockets, pero **solo verá y podrá interactuar con los chats que el admin le asignó**.
 
-- ✅ **Socket.IO** para comunicación en tiempo real
+### Guía de Integración para el Frontend (¡Importante!)
 
-- ✅ **Manejo robusto de errores**✅ **Mensajes en Tiempo Real Optimizados**
+Para que tu aplicación frontend funcione con este nuevo sistema, necesitas implementar los siguientes cambios:
 
-- ✅ **Configuración centralizada**- Comunicación Socket.IO mejorada para mensajes entrantes
+#### 1. Inicialización Manual de WhatsApp (Solo Admin)
 
-- ✅ **Estructura modular y escalable**- Procesamiento automático sin requerir polling del frontend
+La conexión con WhatsApp ya no es automática. El administrador, después de iniciar sesión, debe hacer clic en un botón "Conectar WhatsApp" que realice la siguiente llamada:
 
-- Logs de debugging eliminados para mayor rendimiento
-
-## 📁 Estructura del Proyecto
-
-✅ **Código Limpio y Optimizado**
-
-```- Eliminación de logs innecesarios de consola
-
-src/- Código production-ready sin overhead de debugging
-
-├── config/          # Configuración centralizada- Manejo de errores mejorado
-
-├── controllers/     # Lógica de controladores (MVC)
-
-├── services/        # Lógica de negocio (WhatsApp)✅ **Arquitectura Socket.IO Refinada**
-
-├── routes/          # Definición de rutas REST- Manejo eficiente de salas de chat
-
-├── middleware/      # Middleware personalizado- Eventos de conexión/desconexión optimizados
-
-├── utils/           # Utilidades y helpers- Emisión directa a salas específicas
-
-├── sockets/         # Manejo de Socket.IO
-
-└── app.js          # Aplicación principal---
-
+```bash
+POST /api/whatsapp/init
+Authorization: Bearer <ADMIN_JWT_TOKEN>
 ```
 
-## ⚙️ Tecnologías principales
+Solo después de esta llamada, el servidor empezará el proceso y emitirá el evento `qr` por el socket.
 
-## 🛠️ Instalación
+#### 2. Autenticación del Cliente de Socket.IO
 
-| Tecnología         | Función principal                           |
+El cliente de Socket.IO **debe** enviar el token JWT al conectarse. Esto es crucial para que el servidor sepa qué usuario es y a qué salas de notificación debe unirlo.
 
-```bash|--------------------|---------------------------------------------|
+**Ejemplo en JavaScript (Cliente):**
 
-npm install| 🟩 Node.js         | Entorno de ejecución                        |
+```javascript
+import { io } from "socket.io-client";
 
-```| 🚀 Express.js      | Servidor HTTP REST                          |
+const jwtToken = "tu_token_jwt_aqui"; // El token obtenido del login
 
-| 🔄 Socket.IO       | Comunicación en tiempo real                 |
+const socket = io("http://localhost:3000", {
+  auth: {
+    token: jwtToken
+  }
+});
 
-## 🚀 Uso| 💬 whatsapp-web.js | Conexión y control de WhatsApp Web          |
+socket.on('connect', () => {
+  console.log('Conectado y autenticado al servidor de sockets!');
+});
 
-| 📤 Multer          | Subida de archivos multimedia               |
+// ... tus otros listeners
+```
 
-### Desarrollo| 🧾 QRCode          | Generación de QR para autenticación         |
+#### 3. Vista Filtrada para Empleados
 
-```bash| 🌐 Node-Fetch      | Descarga de archivos remotos                |
+No necesitas implementar lógica de filtrado en el frontend. El backend se encarga de todo.
+- Un **admin** que llame a `GET /api/chats` recibirá todos los chats.
+- Un **empleado** que llame al mismo endpoint `GET /api/chats` recibirá **automáticamente** solo la lista de chats que tiene asignados.
+- Lo mismo ocurre con los eventos de socket: un empleado solo recibirá notificaciones `message` de los chats permitidos.
 
-npm run dev| 💾 FS / Path       | Almacenamiento local en disco               |
+### Nuevos Endpoints de API (`/api/permissions`)
 
+Estos endpoints son **solo para administradores** y requieren un token JWT de admin.
+
+#### Asignar un chat a un empleado
+
+```bash
+POST /api/permissions/assign
+Authorization: Bearer <ADMIN_JWT_TOKEN>
+Content-Type: application/json
+
+{
+  "employeeId": 123,  // ID del empleado
+  "chatId": "5491122334455@c.us" // ID del chat de WhatsApp
+}
+```
+
+#### Revocar un chat a un empleado
+
+```bash
+POST /api/permissions/revoke
+Authorization: Bearer <ADMIN_JWT_TOKEN>
+Content-Type: application/json
+
+{
+  "employeeId": 123,
+  "chatId": "5491122334455@c.us"
+}
+```
+
+#### Listar chats de un empleado
+
+```bash
+GET /api/permissions/employee/123
+Authorization: Bearer <ADMIN_JWT_TOKEN>
 ```
 
 ---
 
-### Producción
+## 📋 API Endpoints (Referencia General)
 
-```bash## 🧭 Endpoints REST API
+### Autenticación (`/api/auth`)
+- `POST /register`: Registrar un nuevo **Administrador**.
+- `POST /login`: Iniciar sesión (para Admins y Empleados).
+- `POST /create-station`: (Admin) Crear una nueva cuenta de **Empleado**.
+- `GET /employees`: (Admin) Listar todos los empleados creados por el admin.
+- `GET /qr`: Obtener el código QR actual para vincular WhatsApp (después de llamar a `/init`).
+- `GET /status`: Estado de la conexión de WhatsApp.
 
-npm start
+### Chats (`/api/chats`)
+- `GET /`: Obtener la lista de chats (filtrada automáticamente para empleados).
+- `GET /:chatId/messages`: Obtener mensajes de un chat (restringido para empleados).
+- `POST /:chatId/messages`: Enviar un mensaje a un chat (restringido para empleados).
 
-```| Método | Ruta                          | Descripción                                             | Parámetros                      |
+### Media (`/api/media`)
+- `GET /:messageId`: Descargar un archivo multimedia de un mensaje.
 
-|--------|-------------------------------|---------------------------------------------------------|---------------------------------|
+### WhatsApp (`/api/whatsapp`)
+- `POST /init`: (Admin) Iniciar la conexión con WhatsApp y generar el QR.
 
-## 📋 API Endpoints| GET    | `/qr`                         | Devuelve el código QR actual para vincular WhatsApp.    | —                               |
-
-| GET    | `/chats`                      | Lista los chats disponibles (ordenados por último mensaje). | —                          |
-
-### Autenticación| GET    | `/me`                         | Devuelve los datos del usuario autenticado.             | —                               |
-
-- `GET /api/auth/qr` - Obtener código QR| GET    | `/messages/:chatId`           | Obtiene mensajes de un chat.                            | `limit`, `before`               |
-
-- `GET /api/auth/status` - Estado de conexión| POST   | `/send-message`               | Envía texto o archivo multimedia.                       | `chatId`, `message`, `file`     |
-
-- `GET /api/auth/me` - Información del usuario| GET    | `/download-media/:messageId`  | Descarga archivo adjunto.                               | `messageId`                     |
-
-- `POST /api/auth/logout` - Cerrar sesión| GET    | `/profile-photo/:chatId`      | Obtiene foto de perfil de contacto.                     | `chatId`                        |
-
-| GET    | `/contact/:chatId`            | Devuelve datos de contacto (nombre, número, descripción, foto). | `chatId`               |
-
-### Chats| POST   | `/contact/:chatId/photo`      | Sube manualmente una foto de contacto.                  | `file`                          |
-
-- `GET /api/chats` - Lista de chats| POST   | `/contact/:chatId/description`| Actualiza la descripción de un contacto.                | `description`                   |
-
-- `GET /api/chats/:chatId/messages` - Mensajes de un chat
-
-- `POST /api/chats/:chatId/messages` - Enviar mensaje---
-
-- `PUT /api/chats/:chatId/read` - Marcar como leído
-
-## 🔄 Eventos en tiempo real (Socket.IO)
-
-### Media
-
-- `GET /api/media/:messageId` - Descargar archivo| Evento       | Dirección              | Descripción                                             |
-
-- `GET /api/media/profile/:chatId` - Foto de perfil|--------------|-----------------------|---------------------------------------------------------|
-
-| `qr`         | 🔁 Servidor → Cliente  | Envía el QR generado para conectar la sesión.           |
-
-### Compatibilidad (Rutas Legacy)| `ready`      | 🔁 Servidor → Cliente  | Notifica cuando WhatsApp está listo y conectado.        |
-
-Las siguientes rutas mantienen compatibilidad con versiones anteriores:| `message`    | 🔁 Servidor → Cliente  | Envía mensajes nuevos al chat correspondiente.          |
-
-- `GET /qr` → `/api/auth/qr`| `join`       | 🔁 Cliente → Servidor  | Cliente se une a una sala específica.                   |
-
-- `GET /status` → `/api/auth/status`| `disconnect` | 🔁 Automático          | Detecta desconexiones.                                  |
-
-- `POST /logout` → `/api/auth/logout`
-
-- `GET /chats` → `/api/chats`---
-
-- Y más...
-
-## 🧠 Ejemplos de respuesta JSON
+---
 
 ## 🔌 Socket.IO Events
 
-### 🗂️ Chat (`GET /chats`)
+### Servidor → Cliente
+- `qr`: Envía el QR generado para escanear.
+- `ready`: Notifica que WhatsApp está conectado.
+- `message`: Envía un nuevo mensaje entrante (solo a usuarios autorizados).
+- `chats-updated`: Notifica que la lista de chats ha cambiado.
+- `disconnected`: Notifica que la sesión de WhatsApp se ha desconectado.
 
-### Cliente → Servidor```json
-
-- `join` - Unirse a un chat{
-
-- `leave` - Salir de un chat  "id": "5491122334455@c.us",
-
-- `request-chats` - Solicitar lista de chats  "name": "Juan Pérez",
-
-- `logout` - Cerrar sesión  "lastMessageTimestamp": 1696422050,
-
-  "unreadCount": 2
-
-### Servidor → Cliente}
-
-- `qr` - Código QR generado```
-
-- `ready` - WhatsApp conectado
-
-- `message` - Nuevo mensaje### 💬 Mensaje (`GET /messages/:chatId`)
-
-- `chats-updated` - Lista de chats actualizada```json
-
-- `disconnected` - WhatsApp desconectado{
-
-  "id": "ABC123",
-
-## ⚙️ Configuración  "body": "Hola!",
-
-  "fromMe": false,
-
-Las configuraciones se encuentran en `src/config/index.js`:  "timestamp": 1696422050,
-
-  "sender": "5491122334455@c.us",
-
-- **Puerto del servidor**: 3000 (por defecto)  "type": "chat",
-
-- **CORS**: Habilitado para todos los orígenes  "mediaUrl": null
-
-- **Límite de archivos**: 50MB}
-
-- **Límite de mensajes**: 50 por defecto```
-
-
-
-## 📖 Documentación Detallada---
-
-
-
-Ver [README-REFACTORED.md](./README-REFACTORED.md) para más detalles sobre la arquitectura y proceso de refactorización.## 🗃️ Almacenamiento local
-
-
-
-## 🤝 Contribución| Recurso             | Tipo                  | Persistente | Carpeta           |
-
-|---------------------|----------------------|-------------|-------------------|
-
-1. Fork el proyecto| Sesión WhatsApp     | `LocalAuth()`        | ✅          | `.wwebjs_auth/`   |
-
-2. Crea tu feature branch (`git checkout -b feature/AmazingFeature`)| Archivos subidos    | Temporales (Multer)  | ⚠️ No       | `/uploads/`       |
-
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)| Fotos y descripciones | Archivos locales    | ✅          | `/profile-data/`  |
-
-4. Push al branch (`git push origin feature/AmazingFeature`)| Chats y QR          | Variables en memoria | ❌          | —                 |
-
-5. Abre un Pull Request
+### Cliente → Servidor
+- `join`: (Opcional) Unirse a una sala de chat específica para notificaciones.
+- `request-chats`: Pide al servidor que reenvíe la lista de chats actualizada.
 
 ---
 
-## 📄 Licencia
+## 🛠️ Instalación
 
-## 📦 Estructura del proyecto
-
-Este proyecto está bajo la Licencia ISC.
-```
-project-root/
-│
-├── uploads/             # Archivos temporales
-├── profile-data/        # Fotos y descripciones
-├── .wwebjs_auth/        # Sesión de WhatsApp (LocalAuth)
-├── server.js            # Código principal
-├── package.json
-└── README.md
-```
-
----
-
-## 📤 Ejemplo: Envío de archivo
-
-```
-POST /send-message
-Content-Type: multipart/form-data
-
-Body:
-  chatId = 5491122334455@c.us
-  message = "Foto del producto"
-  file = imagen.jpg
-```
-
-- 🗂️ Guardado temporalmente en `/uploads/`
-- 🗑️ Eliminado automáticamente tras el envío.
-
----
-
-## 🖼️ Diagrama de arquitectura
-
-```mermaid
-sequenceDiagram
-    participant Frontend
-    participant NodeJS as Backend WhatsApp (Node.js)
-    participant SpringBoot as Backend Negocio (Java)
-    participant DB as Base de Datos
-    participant WhatsApp as Servidores WhatsApp
-
-    Frontend->>NodeJS: Escanear QR
-    NodeJS->>WhatsApp: Solicita sesión
-    WhatsApp->>NodeJS: Devuelve token de sesión
-    NodeJS->>SpringBoot: Notifica conexión (Webhook)
-    SpringBoot->>DB: Guarda número y sessionId
-    SpringBoot->>NodeJS: Envía mensaje automatizado
-    NodeJS->>WhatsApp: Envía mensaje
-    WhatsApp->>ClienteFinal: Recibe mensaje
-
-```
-
----
-
-## 🚀 Ejecución rápida
-
-```sh
+```bash
 npm install
-node server.js
 ```
-Abrir en navegador → [http://localhost:3000](http://localhost:3000)
 
----
+## 🚀 Uso
 
-## 🧩 Estado del sistema
+### Desarrollo
+```bash
+npm run dev
+```
 
-| Elemento                    | Estado         | Descripción                    |
-|-----------------------------|---------------|--------------------------------|
-| Cliente WhatsApp conectado  | ✅            | Conexión activa y estable      |
-| Socket.IO activo            | ✅            | Tiempo real funcionando        |
-| Persistencia de sesión      | ✅            | LocalAuth configurado          |
-| Mensajes en tiempo real     | ✅            | Sin polling, eventos directos  |
-| Código optimizado           | ✅            | Sin logs innecesarios          |
-| Base de datos externa       | ❌ No utilizada| Sistema independiente         |
-
----
-
-## 📋 Notas de Desarrollo
-
-### Configuración Socket.IO
-- Puerto: `3000`
-- CORS: Habilitado para todos los orígenes (`origin: "*"`)
-- Salas automáticas por `chatId`
-
-### Estructura de Mensajes
-- **Individual**: `51925593795@c.us`
-- **Grupo**: `120363417238560779@g.us`
-- **Emisión**: `io.to(chatId).emit("message", formatted)`
-
-### Flujo de Mensajes en Tiempo Real
-1. WhatsApp → `client.on("message")` 
-2. Formateo automático del mensaje
-3. Emisión a sala específica via Socket.IO
-4. Frontend recibe evento `message` instantáneamente
+### Producción
+```bash
+npm start
+```
