@@ -1,4 +1,5 @@
 const { asyncHandler } = require('../middleware/errorHandler');
+const ChatPermission = require('../models/ChatPermission');
 
 class ChatController {
   constructor(whatsappService) {
@@ -31,16 +32,32 @@ class ChatController {
 
   // GET /api/chats
   getChats = asyncHandler(async (req, res) => {
-    const chats = this.whatsappService.getChats();
+    const { userId, rol } = req.user;
+
+    const allChats = this.whatsappService.getChats();
+
+    if (rol === 'ADMIN') {
+      // Los admins ven todos los chats
+      return res.json({
+        success: true,
+        data: allChats
+      });
+    }
+
+    // Los empleados solo ven los chats asignados
+    const permittedChatIds = await ChatPermission.findByEmployeeId(userId);
+    const filteredChats = allChats.filter(chat => permittedChatIds.includes(chat.id._serialized));
+
     res.json({
       success: true,
-      data: chats
+      data: filteredChats
     });
   });
 
   // GET /api/chats/:chatId/messages
   getMessages = asyncHandler(async (req, res) => {
     const { chatId } = req.params;
+    const { userId, rol } = req.user;
     const limit = parseInt(req.query.limit || "50", 10);
     const before = parseInt(req.query.before || "0", 10);
 
@@ -49,6 +66,14 @@ class ChatController {
         success: false,
         error: "ChatId es requerido"
       });
+    }
+
+    // Verificar permiso si es empleado
+    if (rol === 'EMPLEADO') {
+      const hasPermission = await ChatPermission.hasPermission(userId, chatId);
+      if (!hasPermission) {
+        return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
+      }
     }
 
     const messages = await this.whatsappService.getChatMessages(chatId, limit, before);
@@ -100,6 +125,7 @@ class ChatController {
   // POST /api/chats/:chatId/messages
   sendMessage = asyncHandler(async (req, res) => {
     const { chatId } = req.params;
+    const { userId, rol } = req.user;
     const { message } = req.body;
     const file = req.file;
 
@@ -108,6 +134,14 @@ class ChatController {
         success: false,
         error: "ChatId es requerido"
       });
+    }
+
+    // Verificar permiso si es empleado
+    if (rol === 'EMPLEADO') {
+      const hasPermission = await ChatPermission.hasPermission(userId, chatId);
+      if (!hasPermission) {
+        return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
+      }
     }
 
     if (!message && !file) {

@@ -19,6 +19,7 @@ class WhatsAppClient {
     this.qrImage = "";
     this.isConnected = false;
     this.socketIO = null;
+    this.adminId = null; // ID del admin dueño de la sesión
     this.isIntentionalLogout = false;
     this.cacheFilePath = path.join(__dirname, '../../../.chats-cache.json');
     this._pollInterval = null;
@@ -50,6 +51,10 @@ class WhatsAppClient {
    */
   setSocketIO(io) {
     this.socketIO = io;
+  }
+
+  setAdminId(adminId) {
+    this.adminId = adminId;
   }
 
   /**

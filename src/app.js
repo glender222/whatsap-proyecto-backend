@@ -13,11 +13,14 @@ const WhatsAppService = require("./services/whatsappService");
 const SocketHandler = require("./sockets/socketHandler");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const User = require("./models/User");
+const ChatPermission = require("./models/ChatPermission");
 
 // Importar rutas
 const createAuthRoutes = require("./routes/authRoutes");
 const createChatRoutes = require("./routes/chatRoutes");
 const createMediaRoutes = require("./routes/mediaRoutes");
+const permissionRoutes = require("./routes/permissionRoutes");
+const createWhatsAppRoutes = require("./routes/whatsappRoutes");
 
 class App {
   constructor() {
@@ -84,6 +87,7 @@ class App {
   async initializeDatabase() {
     try {
       await User.createTableIfNotExists();
+      await ChatPermission.createTableIfNotExists();
       console.log('✅ Base de datos inicializada');
     } catch (error) {
       console.error('❌ Error inicializando BD:', error);
@@ -95,6 +99,8 @@ class App {
     this.app.use("/api/auth", createAuthRoutes(this.whatsappService));
     this.app.use("/api/chats", createChatRoutes(this.whatsappService));
     this.app.use("/api/media", createMediaRoutes(this.whatsappService));
+    this.app.use("/api/permissions", permissionRoutes);
+    this.app.use("/api/whatsapp", createWhatsAppRoutes(this.whatsappService));
 
     // Rutas de compatibilidad con el frontend existente
     this.setupLegacyRoutes();
@@ -154,13 +160,12 @@ class App {
 
   async start() {
     try {
-      await this.whatsappService.initialize();
-      
+      // La inicialización de WhatsApp ahora es manual a través de la API
       this.server.listen(config.server.port, () => {
         console.log(`🚀 API + Socket.IO corriendo en http://${config.server.host}:${config.server.port}`);
-        console.log(`📱 WhatsApp Web API iniciada correctamente`);
         console.log(`🔐 Autenticación JWT activada`);
         console.log(`📖 Swagger disponible en http://${config.server.host}:${config.server.port}/api/docs`);
+        console.log('✅ Servidor listo. Esperando inicialización de WhatsApp por parte de un administrador.');
       });
     } catch (error) {
       console.error('Error al iniciar la aplicación:', error);

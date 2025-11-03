@@ -7,6 +7,7 @@ const WhatsAppClient = require('./whatsapp/WhatsAppClient');
 class WhatsAppService {
   constructor() {
     this.whatsappClient = new WhatsAppClient();
+    this.adminId = null;
   }
 
   // ==========================================
@@ -17,7 +18,12 @@ class WhatsAppService {
     this.whatsappClient.setSocketIO(io);
   }
 
-  async initialize() {
+  async initialize(adminId) {
+    if (!adminId) {
+      throw new Error('Se requiere un adminId para inicializar el servicio de WhatsApp.');
+    }
+    this.adminId = adminId;
+    this.whatsappClient.setAdminId(adminId);
     return await this.whatsappClient.initialize();
   }
 

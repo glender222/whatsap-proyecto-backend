@@ -3,6 +3,7 @@
  * Maneja los eventos del cliente de WhatsApp
  */
 const qrcode = require("qrcode");
+const ChatPermission = require("../../models/ChatPermission");
 
 class EventHandler {
   constructor(whatsappClient) {
@@ -163,7 +164,20 @@ class EventHandler {
     const formatted = this.whatsappClient.messageHandler.formatMessage(msg, chatId);
     
     if (this.whatsappClient.socketIO) {
-      this.whatsappClient.socketIO.to(chatId).emit("message", formatted);
+      const adminId = this.whatsappClient.adminId;
+      if (!adminId) return; // No emitir si no hay un admin asociado
+
+      const permittedEmployeeIds = await ChatPermission.findByChatId(chatId);
+
+      const recipientIds = [adminId, ...permittedEmployeeIds].map(id => id.toString());
+
+      if (recipientIds.length > 0) {
+        // Enviar el mensaje a las salas de los usuarios autorizados
+        this.whatsappClient.socketIO.to(recipientIds).emit("message", formatted);
+      }
+
+      // Actualizar la lista de chats para todos los usuarios conectados
+      // La lógica de filtrado está en el socketHandler
       this.whatsappClient.socketIO.emit("chats-updated", this.whatsappClient.chatsList);
     }
   }
