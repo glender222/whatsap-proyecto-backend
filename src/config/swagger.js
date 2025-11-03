@@ -141,7 +141,9 @@ const options = {
   apis: [
     './src/routes/authRoutes.js',
     './src/routes/permissionRoutes.js',
-    './src/routes/whatsappRoutes.js'
+    './src/routes/whatsappRoutes.js',
+    './src/routes/chatRoutes.js',
+    './src/routes/mediaRoutes.js'
   ]
 };
 
