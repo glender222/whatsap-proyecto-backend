@@ -104,39 +104,10 @@ class App {
     this.app.use("/api/permissions", permissionRoutes); // Este no necesita el servicio
     this.app.use("/api/whatsapp", createWhatsAppRoutes(this.sessionManager));
 
-    // Rutas de compatibilidad con el frontend existente
-    this.setupLegacyRoutes();
-
     // Health check
     this.app.get('/health', (req, res) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
     });
-  }
-
-  setupLegacyRoutes() {
-    const multer = require('multer');
-    const upload = multer({ dest: "uploads/" });
-    
-    // Importar controladores
-    const AuthController = require("./controllers/authController");
-    const ChatController = require("./controllers/chatController");
-    const MediaController = require("./controllers/mediaController");
-    
-    // Los controladores ahora reciben el sessionManager
-    const authController = new AuthController(this.sessionManager);
-    const chatController = new ChatController(this.sessionManager);
-    const mediaController = new MediaController(this.sessionManager);
-
-    // Mantener endpoints originales para compatibilidad DIRECTA
-    this.app.get("/qr", authController.getQRLegacy);
-    this.app.get("/status", authController.getStatusLegacy);
-    this.app.get("/me", authController.getMeLegacy);
-    this.app.post("/logout", authController.logoutLegacy);
-    this.app.get("/chats", chatController.getChatsLegacy);
-    this.app.get("/messages/:chatId", chatController.getMessagesLegacy);
-    this.app.post("/send-message", upload.single("file"), chatController.sendMessageLegacy);
-    this.app.get("/download-media/:messageId", mediaController.downloadMedia);
-    this.app.get("/profile-photo/:chatId", mediaController.getProfilePhoto);
   }
 
   setupSocketIO() {
