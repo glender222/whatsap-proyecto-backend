@@ -1,9 +1,6 @@
 const redis = require('redis');
 const config = require('../config');
 
-// Constantes para las claves de Redis
-const SESSION_ADMIN_ID_KEY = 'whatsapp_session:admin_id';
-const SESSION_LOCK_KEY = 'whatsapp_session:lock';
 const LOCK_TIMEOUT_SECONDS = 10; // Tiempo que una instancia mantiene el lock
 
 let instance = null;
@@ -27,6 +24,11 @@ class StateManager {
     instance = this;
   }
 
+  _getKey(adminId, keyType) {
+    if (!adminId) throw new Error('adminId es requerido para generar una clave de Redis');
+    return `session:${adminId}:${keyType}`;
+  }
+
   async connect() {
     if (this.isConnected) return;
     try {
@@ -35,30 +37,19 @@ class StateManager {
       console.log('✅ Conectado a Redis');
     } catch (error) {
       console.error('❌ No se pudo conectar a Redis:', error);
-      // Salir si Redis no está disponible, ya que es crítico
       process.exit(1);
     }
   }
 
-  async setSessionAdmin(adminId) {
-    if (!this.isConnected) await this.connect();
-    return await this.client.set(SESSION_ADMIN_ID_KEY, adminId);
-  }
-
-  async getSessionAdmin() {
-    if (!this.isConnected) await this.connect();
-    return await this.client.get(SESSION_ADMIN_ID_KEY);
-  }
-
   /**
-   * Intenta adquirir un lock para la sesión de WhatsApp.
-   * Utiliza un set con NX (not exists) y EX (expire) para asegurar atomicidad.
-   * @returns {boolean} - True si el lock fue adquirido, false en caso contrario.
+   * Intenta adquirir un lock para una sesión de WhatsApp específica.
+   * @param {number} adminId
+   * @returns {boolean} - True si el lock fue adquirido.
    */
-  async acquireLock() {
+  async acquireLock(adminId) {
     if (!this.isConnected) await this.connect();
-    // El 'OK' es la respuesta estándar de Redis para un SET exitoso.
-    const result = await this.client.set(SESSION_LOCK_KEY, 'locked', {
+    const lockKey = this._getKey(adminId, 'lock');
+    const result = await this.client.set(lockKey, 'locked', {
       EX: LOCK_TIMEOUT_SECONDS,
       NX: true,
     });
@@ -66,23 +57,31 @@ class StateManager {
   }
 
   /**
-   * Libera el lock de la sesión.
+   * Libera el lock de una sesión.
+   * @param {number} adminId
    */
-  async releaseLock() {
+  async releaseLock(adminId) {
     if (!this.isConnected) await this.connect();
-    return await this.client.del(SESSION_LOCK_KEY);
+    const lockKey = this._getKey(adminId, 'lock');
+    return await this.client.del(lockKey);
   }
 
   /**
-   * Refresca el lock para mantenerlo vivo.
+   * Refresca un lock para mantenerlo vivo.
+   * @param {number} adminId
    */
-  async refreshLock() {
+  async refreshLock(adminId) {
     if (!this.isConnected) await this.connect();
-    // Usamos EX para renovar el tiempo de expiración
-    return await this.client.set(SESSION_LOCK_KEY, 'locked', {
+    const lockKey = this._getKey(adminId, 'lock');
+    const result = await this.client.set(lockKey, 'locked', {
         EX: LOCK_TIMEOUT_SECONDS,
-        XX: true, // Only set the key if it already exists
+        XX: true, // Solo actualiza si la clave ya existe
     });
+    // Si el lock expiró y otro proceso lo tomó, set fallará y devolverá null.
+    if (result === null) {
+      throw new Error(`No se pudo refrescar el lock para el admin ${adminId}. Posiblemente expiró.`);
+    }
+    return result;
   }
 }
 

@@ -1,192 +1,98 @@
-/**
- * EventHandler
- * Maneja los eventos del cliente de WhatsApp
- */
 const qrcode = require("qrcode");
 const ChatPermission = require("../../models/ChatPermission");
-
 const stateManager = require('../stateManager');
 
 class EventHandler {
   constructor(whatsappClient, onDisconnectedCallback) {
     this.whatsappClient = whatsappClient;
     this.onDisconnected = onDisconnectedCallback;
+    this.adminId = this.whatsappClient.adminId; // Guardar adminId para fácil acceso
+    this.tenantRoom = `tenant:${this.adminId}`; // Sala de socket para este tenant
   }
 
-  /**
-   * Configura todos los event listeners del cliente
-   * @param {Object} client - Cliente de WhatsApp
-   */
   setupEventHandlers(client) {
     client.on("qr", this.handleQR.bind(this));
     client.on("ready", this.handleReady.bind(this));
     client.on("disconnected", this.handleDisconnected.bind(this));
-    client.on("auth_failure", this.handleAuthFailure.bind(this));
-    client.on("change_state", this.handleStateChange.bind(this));
     client.on("message", this.handleMessage.bind(this));
   }
 
-  /**
-   * Maneja la generación del código QR
-   * @param {string} qr - Código QR
-   */
   async handleQR(qr) {
+    if (!this.whatsappClient.socketIO) return;
     try {
-      this.whatsappClient.qrImage = await new Promise((resolve, reject) => {
-        qrcode.toDataURL(qr, (err, url) => {
-          if (err) reject(err);
-          else resolve(url);
-        });
-      });
-      
-      console.log("QR generado");
-      if (this.whatsappClient.socketIO) {
-        this.whatsappClient.socketIO.emit("qr", this.whatsappClient.qrImage);
-      }
+      const qrImage = await qrcode.toDataURL(qr);
+      // Emitir QR solo a la sala del admin/tenant que lo solicitó
+      this.whatsappClient.socketIO.to(this.tenantRoom).emit("qr", qrImage);
     } catch (error) {
-      console.error("Error generando QR:", error);
+      console.error(`[${this.adminId}] Error generando QR:`, error);
     }
   }
 
-  /**
-   * Maneja el evento cuando WhatsApp está listo
-   */
   async handleReady() {
-    console.log("✅ WhatsApp conectado!");
+    console.log(`[${this.adminId}] ✅ WhatsApp conectado!`);
     this.whatsappClient.isConnected = true;
-    this.whatsappClient.qrImage = "";
     
-    // EMITIR ready INMEDIATAMENTE cuando se conecta
     if (this.whatsappClient.socketIO) {
-      this.whatsappClient.socketIO.emit("ready", { status: "connected" });
-      console.log("📡 Evento 'ready' emitido al frontend");
+      // Notificar a todo el tenant que la sesión está lista
+      this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", { status: "connected" });
     }
     
-    // LUEGO empezar a cargar chats (los eventos se emiten dentro de loadChats)
     try {
       await this.whatsappClient.chatManager.loadChats();
-      console.log("✅ Todos los chats cargados completamente");
+      console.log(`[${this.adminId}] ✅ Chats cargados.`);
     } catch (err) {
-      console.error('❌ Error en carga de chats:', err);
-      if (this.whatsappClient.socketIO) {
-        this.whatsappClient.socketIO.emit("loading-chats", {
-          status: "error",
-          message: "Error cargando chats"
-        });
-      }
-    }
-    
-    // Si configurado, arrancar polling para detectar actividad desde otros dispositivos
-    const config = require("../../config");
-    const intervalSec = config.whatsapp.pollIntervalSeconds || 0;
-    if (intervalSec > 0) {
-      console.log(`Iniciando polling de chats cada ${intervalSec}s para detectar actividad remota`);
-      this.whatsappClient._pollInterval = setInterval(() => {
-        this.whatsappClient.chatManager.refreshRecentChats().catch(err => 
-          console.warn('Error en refreshRecentChats:', err)
-        );
-      }, intervalSec * 1000);
+      console.error(`[${this.adminId}] ❌ Error cargando chats:`, err);
     }
   }
 
-  /**
-   * Maneja la desconexión de WhatsApp
-   * @param {string} reason - Razón de la desconexión
-   */
   async handleDisconnected(reason) {
-    console.log("WhatsApp desconectado:", reason);
+    console.log(`[${this.adminId}] WhatsApp desconectado:`, reason);
     
-    // Liberar el lock para que otra instancia pueda tomar el control
-    await stateManager.releaseLock();
-    this.onDisconnected(); // Llamar al callback
+    // Liberar el lock para que otra instancia/proceso pueda tomar el control
+    await stateManager.releaseLock(this.adminId);
+    this.onDisconnected(); // Detener el refresco del lock
 
-    // Si es un logout intencional, no procesar como desconexión
-    if (this.whatsappClient.isIntentionalLogout) {
-      console.log("Desconexión por logout intencional - ignorando evento");
-      return;
-    }
-    
     this.whatsappClient.isConnected = false;
-    this.whatsappClient.chatsList = [];
-    this.whatsappClient.qrImage = "";
     
     if (this.whatsappClient.socketIO) {
-      this.whatsappClient.socketIO.emit("disconnected", { reason, status: "disconnected" });
-      this.whatsappClient.socketIO.emit("chats-updated", []);
+      // Notificar a todo el tenant que la sesión se ha desconectado
+      this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", {
+        status: "disconnected",
+        reason
+      });
     }
     
-    // Detener polling si estaba activo
     if (this.whatsappClient._pollInterval) {
       clearInterval(this.whatsappClient._pollInterval);
       this.whatsappClient._pollInterval = null;
     }
   }
 
-  /**
-   * Maneja los errores de autenticación
-   * @param {string} message - Mensaje de error
-   */
-  handleAuthFailure(message) {
-    console.error("Error de autenticación:", message);
-    this.whatsappClient.qrImage = "";
-    
-    if (this.whatsappClient.socketIO) {
-      this.whatsappClient.socketIO.emit("auth_failure", { message, status: "auth_failed" });
-    }
-  }
-
-  /**
-   * Maneja los cambios de estado
-   * @param {string} state - Nuevo estado
-   */
-  handleStateChange(state) {
-    console.log("Estado cambió a:", state);
-    
-    if (this.whatsappClient.socketIO) {
-      this.whatsappClient.socketIO.emit("state_changed", { state });
-    }
-  }
-
-  /**
-   * Maneja los mensajes entrantes
-   * @param {Object} msg - Mensaje recibido
-   */
   async handleMessage(msg) {
+    if (!this.whatsappClient.socketIO) return;
+
     const chat = await msg.getChat();
     const chatId = chat.id._serialized;
     
-    // Filtrar canales/newsletters
-    if (chatId.includes("@newsletter") || 
-        (chat.isGroup && !chatId.includes("@g.us"))) {
-      return;
-    }
-    
-    // Ignorar mensajes de sistema/evento que no representan un mensaje "real"
     const ChatValidator = require('./ChatValidator');
     if (!ChatValidator.isRealMessage(msg)) return;
 
-    // Actualizar el chat en la lista
     await this.whatsappClient.chatManager.updateChatInList(chat, msg.timestamp, msg);
     
-    const formatted = this.whatsappClient.messageHandler.formatMessage(msg, chatId);
+    const formattedMessage = this.whatsappClient.messageHandler.formatMessage(msg, chatId);
     
-    if (this.whatsappClient.socketIO) {
-      const adminId = this.whatsappClient.adminId;
-      if (!adminId) return; // No emitir si no hay un admin asociado
+    // Obtener la lista de usuarios (admin + empleados) que deben recibir el mensaje
+    const permittedEmployeeIds = await ChatPermission.findByChatId(chatId);
+    const recipientIds = [this.adminId, ...permittedEmployeeIds].map(id => id.toString());
 
-      const permittedEmployeeIds = await ChatPermission.findByChatId(chatId);
-
-      const recipientIds = [adminId, ...permittedEmployeeIds].map(id => id.toString());
-
-      if (recipientIds.length > 0) {
-        // Enviar el mensaje a las salas de los usuarios autorizados
-        this.whatsappClient.socketIO.to(recipientIds).emit("message", formatted);
-      }
-
-      // Actualizar la lista de chats para todos los usuarios conectados
-      // La lógica de filtrado está en el socketHandler
-      this.whatsappClient.socketIO.emit("chats-updated", this.whatsappClient.chatsList);
+    if (recipientIds.length > 0) {
+      // Emitir el mensaje a las salas de usuario individuales de los destinatarios
+      this.whatsappClient.socketIO.to(recipientIds).emit("message", formattedMessage);
     }
+
+    // Notificar a todo el tenant que la lista de chats ha sido actualizada
+    // El frontend se encargará de refrescar su lista, que ya viene filtrada por el backend.
+    this.whatsappClient.socketIO.to(this.tenantRoom).emit("chats-updated");
   }
 }
 

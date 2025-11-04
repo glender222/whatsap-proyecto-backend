@@ -9,7 +9,7 @@ const swaggerSpec = require('./config/swagger');
 require('dotenv').config();
 
 const config = require("./config");
-const WhatsAppService = require("./services/whatsappService");
+const sessionManager = require("./services/sessionManager"); // Reemplazar WhatsAppService con SessionManager
 const SocketHandler = require("./sockets/socketHandler");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const User = require("./models/User");
@@ -31,8 +31,9 @@ class App {
       cors: { origin: config.cors.origin } 
     });
     
-    this.whatsappService = new WhatsAppService();
-    this.socketHandler = new SocketHandler(this.whatsappService);
+    // El SessionManager es ahora el servicio principal
+    this.sessionManager = sessionManager;
+    this.socketHandler = new SocketHandler(this.sessionManager);
     
     this.setupMiddleware();
     this.setupSwagger();
@@ -96,12 +97,12 @@ class App {
   }
 
   setupRoutes() {
-    // Rutas principales
-    this.app.use("/api/auth", createAuthRoutes(this.whatsappService));
-    this.app.use("/api/chats", createChatRoutes(this.whatsappService));
-    this.app.use("/api/media", createMediaRoutes(this.whatsappService));
-    this.app.use("/api/permissions", permissionRoutes);
-    this.app.use("/api/whatsapp", createWhatsAppRoutes(this.whatsappService));
+    // Rutas principales - ahora se les pasa el sessionManager
+    this.app.use("/api/auth", createAuthRoutes(this.sessionManager));
+    this.app.use("/api/chats", createChatRoutes(this.sessionManager));
+    this.app.use("/api/media", createMediaRoutes(this.sessionManager));
+    this.app.use("/api/permissions", permissionRoutes); // Este no necesita el servicio
+    this.app.use("/api/whatsapp", createWhatsAppRoutes(this.sessionManager));
 
     // Rutas de compatibilidad con el frontend existente
     this.setupLegacyRoutes();
@@ -121,9 +122,10 @@ class App {
     const ChatController = require("./controllers/chatController");
     const MediaController = require("./controllers/mediaController");
     
-    const authController = new AuthController(this.whatsappService);
-    const chatController = new ChatController(this.whatsappService);
-    const mediaController = new MediaController(this.whatsappService);
+    // Los controladores ahora reciben el sessionManager
+    const authController = new AuthController(this.sessionManager);
+    const chatController = new ChatController(this.sessionManager);
+    const mediaController = new MediaController(this.sessionManager);
 
     // Mantener endpoints originales para compatibilidad DIRECTA
     this.app.get("/qr", authController.getQRLegacy);
@@ -138,7 +140,7 @@ class App {
   }
 
   setupSocketIO() {
-    this.whatsappService.setSocketIO(this.io);
+    this.sessionManager.setSocketIO(this.io); // Inyectar 'io' en el sessionManager
     this.socketHandler.handleConnection(this.io);
   }
 
@@ -161,39 +163,17 @@ class App {
 
   async start() {
     try {
-      await stateManager.connect();
+      await stateManager.connect(); // Conectar a Redis
 
       this.server.listen(config.server.port, () => {
         console.log(`🚀 API + Socket.IO corriendo en http://${config.server.host}:${config.server.port}`);
         console.log(`🔐 Autenticación JWT activada`);
         console.log(`📖 Swagger disponible en http://${config.server.host}:${config.server.port}/api/docs`);
-
-        // Intentar convertirse en la instancia activa al arrancar
-        this.tryBecomeActiveInstance();
+        console.log('✅ Servidor listo para gestionar múltiples sesiones.');
       });
     } catch (error) {
       console.error('Error al iniciar la aplicación:', error);
       process.exit(1);
-    }
-  }
-
-  async tryBecomeActiveInstance() {
-    console.log('ℹ️ Intentando convertirse en la instancia activa de WhatsApp...');
-    const lockAcquired = await stateManager.acquireLock();
-
-    if (lockAcquired) {
-      console.log('✅ Lock adquirido. Esta es la instancia activa.');
-      const adminId = await stateManager.getSessionAdmin();
-
-      if (adminId) {
-        console.log(`▶️ Re-inicializando sesión para el admin ID: ${adminId}`);
-        await this.whatsappService.initialize(adminId);
-      } else {
-        console.log('⚠️ No hay sesión de admin guardada. Esperando inicialización manual vía API.');
-        await stateManager.releaseLock();
-      }
-    } else {
-      console.log('💤 Esta es una instancia en espera (standby).');
     }
   }
 }

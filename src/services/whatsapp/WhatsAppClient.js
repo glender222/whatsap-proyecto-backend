@@ -13,15 +13,18 @@ const MessageHandler = require("./MessageHandler");
 const MediaHandler = require("./MediaHandler");
 
 class WhatsAppClient {
-  constructor(onDisconnectedCallback = () => {}) {
+  constructor(adminId, onDisconnectedCallback = () => {}) {
+    if (!adminId) {
+      throw new Error('WhatsAppClient requiere un adminId');
+    }
+    this.adminId = adminId;
     this.client = null;
     this.chatsList = [];
     this.qrImage = "";
     this.isConnected = false;
     this.socketIO = null;
-    this.adminId = null; // ID del admin dueño de la sesión
     this.isIntentionalLogout = false;
-    this.cacheFilePath = path.join(__dirname, '../../../.chats-cache.json');
+    this.cacheFilePath = path.join(config.whatsapp.sessionPath, `session-${this.adminId}`, '.chats-cache.json');
     this._pollInterval = null;
     
     // Inicializar componentes
@@ -53,16 +56,17 @@ class WhatsAppClient {
     this.socketIO = io;
   }
 
-  setAdminId(adminId) {
-    this.adminId = adminId;
-  }
-
   /**
    * Inicializa el cliente de WhatsApp
    */
   async initialize() {
+    const sessionPath = path.join(config.whatsapp.sessionPath, `session-${this.adminId}`);
+
     this.client = new Client({
-      authStrategy: new LocalAuth(),
+      authStrategy: new LocalAuth({
+        clientId: `session-${this.adminId}`,
+        dataPath: sessionPath
+      }),
     });
 
     this.eventHandler.setupEventHandlers(this.client);
@@ -244,12 +248,14 @@ class WhatsAppClient {
     this.qrImage = "";
     this.isConnected = false;
     
-    // Limpiar sesión local
-    if (fs.existsSync(config.whatsapp.sessionPath)) {
-      fs.rmSync(config.whatsapp.sessionPath, { recursive: true, force: true });
+    const sessionPath = path.join(config.whatsapp.sessionPath, `session-${this.adminId}`);
+    // Limpiar sesión local específica del tenant
+    if (fs.existsSync(sessionPath)) {
+      fs.rmSync(sessionPath, { recursive: true, force: true });
     }
     
-    // Limpiar cache de perfiles
+    // Limpiar cache de perfiles (esto podría ser compartido o también por tenant)
+    // Por ahora, lo mantenemos compartido, pero es un punto a considerar.
     if (fs.existsSync(config.whatsapp.profileDir)) {
       const files = fs.readdirSync(config.whatsapp.profileDir);
       files.forEach(file => {
