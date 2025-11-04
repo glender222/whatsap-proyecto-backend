@@ -41,5 +41,11 @@ module.exports = {
     name: process.env.DB_NAME || 'whatsapp_empresas',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'password'
+  },
+
+  redis: {
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: process.env.REDIS_PORT || 6379,
+    password: process.env.REDIS_PASSWORD || undefined
   }
 };

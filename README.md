@@ -150,6 +150,53 @@ Authorization: Bearer <ADMIN_JWT_TOKEN>
 
 ---
 
+## 📦 Despliegue en Producción (Alta Disponibilidad)
+
+Para desplegar esta aplicación en un entorno de producción escalable (como Kubernetes, Docker Swarm, etc.), es crucial manejar el estado de la sesión de WhatsApp de forma centralizada.
+
+### 1. Requisito de Redis
+
+**Redis es ahora un componente obligatorio.** Se utiliza para:
+- **Centralizar el estado:** Guardar el `adminId` asociado a la sesión de WhatsApp.
+- **Gestionar un "Lock":** Asegurar que solo una instancia de la API (un "worker") intente conectarse a WhatsApp a la vez, evitando conflictos y corrupción de la sesión.
+
+**Variables de Entorno:**
+Debes configurar las siguientes variables de entorno para que la aplicación se conecte a tu servidor Redis:
+- `REDIS_HOST`: La dirección de tu servidor Redis (ej. `my-redis-service`).
+- `REDIS_PORT`: El puerto de Redis (ej. `6379`).
+- `REDIS_PASSWORD`: La contraseña de Redis (si la tienes configurada).
+
+### 2. Volúmenes Persistentes (Crítico)
+
+La sesión de WhatsApp (credenciales, etc.) se guarda en la carpeta `.wwebjs_auth/`. Para que la sesión no se pierda cada vez que un contenedor se reinicia, **debes montar esta carpeta en un volumen persistente.**
+
+**Ejemplo con `docker-compose.yml`:**
+
+```yaml
+version: '3.8'
+
+services:
+  whatsapp-api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - REDIS_HOST=redis
+      # ... otras variables de entorno ...
+    volumes:
+      # Mapea un volumen llamado 'whatsapp_session' a la carpeta donde se guarda la sesión
+      - whatsapp_session:/.wwebjs_auth
+
+  redis:
+    image: "redis:alpine"
+
+volumes:
+  whatsapp_session:
+    # Este volumen asegura que los datos de la sesión persistan
+```
+
+---
+
 ## 🛠️ Instalación
 
 ```bash

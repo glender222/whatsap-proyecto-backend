@@ -4,10 +4,14 @@
  */
 const WhatsAppClient = require('./whatsapp/WhatsAppClient');
 
+const stateManager = require('./stateManager');
+
 class WhatsAppService {
   constructor() {
-    this.whatsappClient = new WhatsAppClient();
     this.adminId = null;
+    this.lockRefreshInterval = null;
+    // Pasar el método stopLockRefresh como callback. Usar .bind(this) para mantener el contexto.
+    this.whatsappClient = new WhatsAppClient(this.stopLockRefresh.bind(this));
   }
 
   // ==========================================
@@ -24,6 +28,10 @@ class WhatsAppService {
     }
     this.adminId = adminId;
     this.whatsappClient.setAdminId(adminId);
+
+    // Iniciar el refresco del lock
+    this.startLockRefresh();
+
     return await this.whatsappClient.initialize();
   }
 
@@ -40,6 +48,8 @@ class WhatsAppService {
   }
 
   async logout() {
+    this.stopLockRefresh();
+    await stateManager.releaseLock();
     return await this.whatsappClient.logout();
   }
 
@@ -106,6 +116,29 @@ class WhatsAppService {
 
   async getProfilePhoto(chatId) {
     return await this.whatsappClient.mediaHandler.getProfilePhoto(chatId);
+  }
+
+  // Métodos para gestionar el lock de Redis
+  startLockRefresh() {
+    if (this.lockRefreshInterval) {
+      clearInterval(this.lockRefreshInterval);
+    }
+    // Refrescar el lock cada 5 segundos (la mitad del timeout del lock)
+    this.lockRefreshInterval = setInterval(() => {
+      stateManager.refreshLock().catch(err => {
+        console.error('❌ Error refrescando el lock de sesión:', err);
+        // Si no se puede refrescar, es crítico. Parar el intervalo.
+        this.stopLockRefresh();
+      });
+    }, 5000);
+  }
+
+  stopLockRefresh() {
+    if (this.lockRefreshInterval) {
+      clearInterval(this.lockRefreshInterval);
+      this.lockRefreshInterval = null;
+      console.log('🛑 Refresco del lock detenido.');
+    }
   }
 }
 

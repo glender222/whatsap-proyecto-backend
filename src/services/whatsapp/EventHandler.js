@@ -5,9 +5,12 @@
 const qrcode = require("qrcode");
 const ChatPermission = require("../../models/ChatPermission");
 
+const stateManager = require('../stateManager');
+
 class EventHandler {
-  constructor(whatsappClient) {
+  constructor(whatsappClient, onDisconnectedCallback) {
     this.whatsappClient = whatsappClient;
+    this.onDisconnected = onDisconnectedCallback;
   }
 
   /**
@@ -90,9 +93,13 @@ class EventHandler {
    * Maneja la desconexión de WhatsApp
    * @param {string} reason - Razón de la desconexión
    */
-  handleDisconnected(reason) {
+  async handleDisconnected(reason) {
     console.log("WhatsApp desconectado:", reason);
     
+    // Liberar el lock para que otra instancia pueda tomar el control
+    await stateManager.releaseLock();
+    this.onDisconnected(); // Llamar al callback
+
     // Si es un logout intencional, no procesar como desconexión
     if (this.whatsappClient.isIntentionalLogout) {
       console.log("Desconexión por logout intencional - ignorando evento");

@@ -14,6 +14,7 @@ const SocketHandler = require("./sockets/socketHandler");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const User = require("./models/User");
 const ChatPermission = require("./models/ChatPermission");
+const stateManager = require("./services/stateManager");
 
 // Importar rutas
 const createAuthRoutes = require("./routes/authRoutes");
@@ -160,16 +161,39 @@ class App {
 
   async start() {
     try {
-      // La inicialización de WhatsApp ahora es manual a través de la API
+      await stateManager.connect();
+
       this.server.listen(config.server.port, () => {
         console.log(`🚀 API + Socket.IO corriendo en http://${config.server.host}:${config.server.port}`);
         console.log(`🔐 Autenticación JWT activada`);
         console.log(`📖 Swagger disponible en http://${config.server.host}:${config.server.port}/api/docs`);
-        console.log('✅ Servidor listo. Esperando inicialización de WhatsApp por parte de un administrador.');
+
+        // Intentar convertirse en la instancia activa al arrancar
+        this.tryBecomeActiveInstance();
       });
     } catch (error) {
       console.error('Error al iniciar la aplicación:', error);
       process.exit(1);
+    }
+  }
+
+  async tryBecomeActiveInstance() {
+    console.log('ℹ️ Intentando convertirse en la instancia activa de WhatsApp...');
+    const lockAcquired = await stateManager.acquireLock();
+
+    if (lockAcquired) {
+      console.log('✅ Lock adquirido. Esta es la instancia activa.');
+      const adminId = await stateManager.getSessionAdmin();
+
+      if (adminId) {
+        console.log(`▶️ Re-inicializando sesión para el admin ID: ${adminId}`);
+        await this.whatsappService.initialize(adminId);
+      } else {
+        console.log('⚠️ No hay sesión de admin guardada. Esperando inicialización manual vía API.');
+        await stateManager.releaseLock();
+      }
+    } else {
+      console.log('💤 Esta es una instancia en espera (standby).');
     }
   }
 }

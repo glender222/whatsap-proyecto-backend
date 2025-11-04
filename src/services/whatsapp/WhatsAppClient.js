@@ -13,7 +13,7 @@ const MessageHandler = require("./MessageHandler");
 const MediaHandler = require("./MediaHandler");
 
 class WhatsAppClient {
-  constructor() {
+  constructor(onDisconnectedCallback = () => {}) {
     this.client = null;
     this.chatsList = [];
     this.qrImage = "";
@@ -25,7 +25,7 @@ class WhatsAppClient {
     this._pollInterval = null;
     
     // Inicializar componentes
-    this.eventHandler = new EventHandler(this);
+    this.eventHandler = new EventHandler(this, onDisconnectedCallback);
     this.chatManager = new ChatManager(this);
     this.messageHandler = new MessageHandler(this);
     this.mediaHandler = new MediaHandler(this);
