@@ -1,216 +1,151 @@
-# 💬 WhatsApp Web API
+# 💬 WhatsApp Web API (Multi-Tenant)
 
-Una API REST moderna y multi-agente para gestionar WhatsApp Web con Socket.IO en tiempo real.
-🟩 **Node.js + Express + Socket.IO**
+Una API REST moderna y multi-tenant para gestionar múltiples sesiones de WhatsApp Web de forma simultánea y aislada, con Socket.IO para comunicación en tiempo real.
+🟩 **Node.js + Express + PostgreSQL + Redis**
 
-## 🚀 Características
+## 🚀 Características Principales
 
-Sistema completo para interactuar con WhatsApp Web desde un servidor Node.js: envío y recepción de mensajes, manejo de archivos multimedia, perfiles y comunicación en tiempo real.
-
-- ✅ **Arquitectura Multi-Agente:** Permite que un administrador conecte una cuenta de WhatsApp y asigne chats específicos a diferentes empleados/estaciones de trabajo.
-- ✅ **Sistema de Permisos Robusto:** Control granular sobre qué empleado puede ver y responder a qué chat.
+- ✅ **Arquitectura Multi-Tenant:** Permite que múltiples administradores se registren y conecten sus propias cuentas de WhatsApp de forma independiente.
+- ✅ **Aislamiento de Datos:** Garantiza que los datos de un administrador (chats, empleados, permisos) nunca sean visibles para otro.
+- ✅ **Sistema de Permisos Robusto:** Cada administrador puede asignar chats específicos a sus propios empleados.
 - ✅ **API REST Semántica y Segura:** Endpoints claros con autenticación JWT y roles (Admin/Empleado).
-- ✅ **Comunicación en Tiempo Real con Socket.IO:** Notificaciones instantáneas de nuevos mensajes solo a los usuarios autorizados.
+- ✅ **Alta Disponibilidad:** Diseñada para entornos de producción, utilizando Redis para gestionar el estado y permitir la escalabilidad horizontal.
 
 ---
 
-## 🚀 Sistema Multi-Agente y Gestión de Permisos
+## 🛠️ Entorno de Desarrollo
 
-Esta API ahora funciona como una plataforma multi-agente. El flujo de trabajo está diseñado para que un **Administrador (rol `ADMIN`)** controle la sesión de WhatsApp y gestione los permisos de sus **Empleados (rol `EMPLEADO`)**.
+### Prerrequisitos
+- **Node.js** (v18 o superior)
+- **Docker** (para levantar Redis y PostgreSQL fácilmente)
+- **Git**
 
-### Flujo de Trabajo (Admin y Empleados)
+### Instalación
+1. Clona el repositorio:
+   ```bash
+   git clone <URL_DEL_REPOSITORIO>
+   cd <NOMBRE_DEL_REPOSITORIO>
+   ```
+2. Instala las dependencias:
+   ```bash
+   npm install
+   ```
+3. Crea un archivo `.env` en la raíz del proyecto y configúralo con las credenciales para PostgreSQL y Redis.
 
-1.  **Registro y Login del Admin:** Un administrador se registra y obtiene sus tokens de autenticación.
-2.  **Inicialización de WhatsApp (¡Nuevo!):** El admin **debe** llamar al nuevo endpoint `POST /api/whatsapp/init` para iniciar la conexión con WhatsApp y generar el QR.
-3.  **Creación de Empleados:** El admin crea cuentas para sus empleados (`POST /api/auth/create-station`).
-4.  **Asignación de Chats:** Una vez que WhatsApp está conectado, el admin usa los nuevos endpoints de permisos para asignar chats específicos a cada empleado.
-5.  **Login del Empleado:** El empleado inicia sesión con sus credenciales.
-6.  **Acceso Limitado:** El empleado ahora puede usar la API y los sockets, pero **solo verá y podrá interactuar con los chats que el admin le asignó**.
+### Uso en Desarrollo
+1. **Levantar Servicios Externos (Redis y PostgreSQL):**
+   Abre una terminal y ejecuta Docker para iniciar Redis:
+   ```bash
+   docker run -d --name mi-redis -p 6379:6379 redis
+   ```
+   (Asegúrate de tener también una instancia de PostgreSQL corriendo).
 
-### Guía de Integración para el Frontend (¡Importante!)
-
-Para que tu aplicación frontend funcione con este nuevo sistema, necesitas implementar los siguientes cambios:
-
-#### 1. Inicialización Manual de WhatsApp (Solo Admin)
-
-La conexión con WhatsApp ya no es automática. El administrador, después de iniciar sesión, debe hacer clic en un botón "Conectar WhatsApp" que realice la siguiente llamada:
-
-```bash
-POST /api/whatsapp/init
-Authorization: Bearer <ADMIN_JWT_TOKEN>
-```
-
-Solo después de esta llamada, el servidor empezará el proceso y emitirá el evento `qr` por el socket.
-
-#### 2. Autenticación del Cliente de Socket.IO
-
-El cliente de Socket.IO **debe** enviar el token JWT al conectarse. Esto es crucial para que el servidor sepa qué usuario es y a qué salas de notificación debe unirlo.
-
-**Ejemplo en JavaScript (Cliente):**
-
-```javascript
-import { io } from "socket.io-client";
-
-const jwtToken = "tu_token_jwt_aqui"; // El token obtenido del login
-
-const socket = io("http://localhost:3000", {
-  auth: {
-    token: jwtToken
-  }
-});
-
-socket.on('connect', () => {
-  console.log('Conectado y autenticado al servidor de sockets!');
-});
-
-// ... tus otros listeners
-```
-
-#### 3. Vista Filtrada para Empleados
-
-No necesitas implementar lógica de filtrado en el frontend. El backend se encarga de todo.
-- Un **admin** que llame a `GET /api/chats` recibirá todos los chats.
-- Un **empleado** que llame al mismo endpoint `GET /api/chats` recibirá **automáticamente** solo la lista de chats que tiene asignados.
-- Lo mismo ocurre con los eventos de socket: un empleado solo recibirá notificaciones `message` de los chats permitidos.
-
-### Nuevos Endpoints de API (`/api/permissions`)
-
-Estos endpoints son **solo para administradores** y requieren un token JWT de admin.
-
-#### Asignar un chat a un empleado
-
-```bash
-POST /api/permissions/assign
-Authorization: Bearer <ADMIN_JWT_TOKEN>
-Content-Type: application/json
-
-{
-  "employeeId": 123,  // ID del empleado
-  "chatId": "5491122334455@c.us" // ID del chat de WhatsApp
-}
-```
-
-#### Revocar un chat a un empleado
-
-```bash
-POST /api/permissions/revoke
-Authorization: Bearer <ADMIN_JWT_TOKEN>
-Content-Type: application/json
-
-{
-  "employeeId": 123,
-  "chatId": "5491122334455@c.us"
-}
-```
-
-#### Listar chats de un empleado
-
-```bash
-GET /api/permissions/employee/123
-Authorization: Bearer <ADMIN_JWT_TOKEN>
-```
+2. **Iniciar la Aplicación:**
+   En la terminal de tu proyecto, ejecuta:
+   ```bash
+   npm run dev
+   ```
+   El servidor se iniciará en `http://localhost:3000`.
 
 ---
 
-## 📋 API Endpoints (Referencia General)
+## 🧪 Guía de Pruebas y Flujo de Trabajo Local
 
-### Autenticación (`/api/auth`)
-- `POST /register`: Registrar un nuevo **Administrador**.
-- `POST /login`: Iniciar sesión (para Admins y Empleados).
-- `POST /create-station`: (Admin) Crear una nueva cuenta de **Empleado**.
-- `GET /employees`: (Admin) Listar todos los empleados creados por el admin.
-- `GET /qr`: Obtener el código QR actual para vincular WhatsApp (después de llamar a `/init`).
-- `GET /status`: Estado de la conexión de WhatsApp.
+Una vez que el backend está corriendo, puedes probar toda la funcionalidad multi-tenant usando la documentación de Swagger.
 
-### Chats (`/api/chats`)
-- `GET /`: Obtener la lista de chats (filtrada automáticamente para empleados).
-- `GET /:chatId/messages`: Obtener mensajes de un chat (restringido para empleados).
-- `POST /:chatId/messages`: Enviar un mensaje a un chat (restringido para empleados).
+**Abre Swagger en tu navegador:** `http://localhost:3000/api/docs`
 
-### Media (`/api/media`)
-- `GET /:messageId`: Descargar un archivo multimedia de un mensaje.
+### Flujo 1: Probar como Administrador A
 
-### WhatsApp (`/api/whatsapp`)
-- `POST /init`: (Admin) Iniciar la conexión con WhatsApp y generar el QR.
+1.  **Registro y Login:**
+    *   Usa `POST /auth/register` para crear un "Admin A".
+    *   Usa `POST /auth/login` con las credenciales del Admin A para obtener su `accessToken`.
+    *   **Autoriza** Swagger haciendo clic en el botón "Authorize" y pegando el token.
 
----
+2.  **Preparar Cliente de Sockets:**
+    *   Crea un archivo local `test-client.html` (código más abajo) y pega el `accessToken` del Admin A.
+    *   Abre este archivo en tu navegador. Verás "Esperando código QR...".
 
-## 🔌 Socket.IO Events
+3.  **Iniciar Sesión de WhatsApp:**
+    *   En Swagger, ejecuta `POST /whatsapp/init`.
+    *   El código QR aparecerá en `test-client.html`. Escanéalo con el teléfono del Admin A.
+    *   La página web confirmará la conexión.
 
-### Servidor → Cliente
-- `qr`: Envía el QR generado para escanear.
-- `ready`: Notifica que WhatsApp está conectado.
-- `message`: Envía un nuevo mensaje entrante (solo a usuarios autorizados).
-- `chats-updated`: Notifica que la lista de chats ha cambiado.
-- `disconnected`: Notifica que la sesión de WhatsApp se ha desconectado.
+4.  **Gestionar Chats y Permisos:**
+    *   Ejecuta `GET /chats` en Swagger. Verás la lista de chats del Admin A.
+    *   Usa `POST /auth/create-station` para crear un "Empleado 1" para A.
+    *   Usa `POST /permissions/assign` para dar al Empleado 1 acceso a un chat específico.
 
-### Cliente → Servidor
-- `join`: (Opcional) Unirse a una sala de chat específica para notificaciones.
-- `request-chats`: Pide al servidor que reenvíe la lista de chats actualizada.
+### Flujo 2: Probar Aislamiento con Administrador B
+
+1.  **Registro y Login:**
+    *   Usa `POST /auth/register` para crear un "Admin B".
+    *   Usa `POST /auth/login` para obtener el `accessToken` de B.
+    *   **Vuelve a Autorizar** Swagger con el nuevo token de B.
+
+2.  **Preparar OTRO Cliente de Sockets:**
+    *   Abre `test-client.html` en una **nueva ventana de navegador (o modo incógnito)**.
+    *   Pega el `accessToken` del **Admin B**.
+
+3.  **Iniciar Sesión de WhatsApp para B:**
+    *   En Swagger (autorizado como B), ejecuta `POST /whatsapp/init`.
+    *   El nuevo QR aparecerá en la segunda ventana del navegador. Escanéalo con un **teléfono diferente**.
+
+4.  **Verificar Aislamiento:**
+    *   Ejecuta `GET /chats` en Swagger. Verás la lista de chats del **Admin B**, y no la de A. El sistema está funcionando de forma aislada.
+
+### Código para `test-client.html`
+
+```html
+<!DOCTYPE html>
+<html>
+<head><title>Cliente de Test Socket.IO</title></head>
+<body>
+  <h1>Receptor de Código QR</h1>
+  <div id="qr-container"></div>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    const jwtToken = "PEGA_AQUÍ_TU_ACCESS_TOKEN";
+
+    const socket = io("http://localhost:3000", { auth: { token: jwtToken } });
+
+    socket.on('connect', () => {
+      document.getElementById('qr-container').innerHTML = '<p>Conectado y autenticado. Esperando QR...</p>';
+    });
+
+    socket.on('qr', (qrDataUrl) => {
+      document.getElementById('qr-container').innerHTML = `<p>Escanea este código:</p><img src="${qrDataUrl}" alt="Código QR">`;
+    });
+
+    socket.on('session_status', (data) => {
+       if(data.status === 'connected') {
+        document.getElementById('qr-container').innerHTML = '<h2>¡WhatsApp Conectado!</h2>';
+       }
+    });
+  </script>
+</body>
+</html>
+```
 
 ---
 
 ## 📦 Despliegue en Producción (Alta Disponibilidad)
 
-Para desplegar esta aplicación en un entorno de producción escalable (como Kubernetes, Docker Swarm, etc.), es crucial manejar el estado de la sesión de WhatsApp de forma centralizada.
+Para desplegar esta aplicación en un entorno escalable (Kubernetes, Docker Swarm), es crucial manejar el estado.
 
 ### 1. Requisito de Redis
+**Redis es obligatorio.** Se usa para gestionar un "lock" distribuido por cada tenant, asegurando que solo una instancia de la API maneje una sesión de WhatsApp a la vez.
+- **Variables de Entorno:** `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
 
-**Redis es ahora un componente obligatorio.** Se utiliza para:
-- **Centralizar el estado:** Guardar el `adminId` asociado a la sesión de WhatsApp.
-- **Gestionar un "Lock":** Asegurar que solo una instancia de la API (un "worker") intente conectarse a WhatsApp a la vez, evitando conflictos y corrupción de la sesión.
-
-**Variables de Entorno:**
-Debes configurar las siguientes variables de entorno para que la aplicación se conecte a tu servidor Redis:
-- `REDIS_HOST`: La dirección de tu servidor Redis (ej. `my-redis-service`).
-- `REDIS_PORT`: El puerto de Redis (ej. `6379`).
-- `REDIS_PASSWORD`: La contraseña de Redis (si la tienes configurada).
-
-### 2. Volúmenes Persistentes (Crítico)
-
-La sesión de WhatsApp (credenciales, etc.) se guarda en la carpeta `.wwebjs_auth/`. Para que la sesión no se pierda cada vez que un contenedor se reinicia, **debes montar esta carpeta en un volumen persistente.**
-
-**Ejemplo con `docker-compose.yml`:**
-
-```yaml
-version: '3.8'
-
-services:
-  whatsapp-api:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - REDIS_HOST=redis
-      # ... otras variables de entorno ...
-    volumes:
-      # Mapea un volumen llamado 'whatsapp_session' a la carpeta donde se guarda la sesión
-      - whatsapp_session:/.wwebjs_auth
-
-  redis:
-    image: "redis:alpine"
-
-volumes:
-  whatsapp_session:
-    # Este volumen asegura que los datos de la sesión persistan
-```
+### 2. Volúmenes Persistentes
+La carpeta `.wwebjs_auth/` debe montarse en un volumen persistente para que las sesiones de WhatsApp sobrevivan a reinicios. La aplicación creará subcarpetas (`session-<adminId>`) dentro de este volumen.
 
 ---
+## 📋 API Endpoints (Referencia General)
+*Consulta la documentación interactiva en `/api/docs` para detalles completos.*
 
-## 🛠️ Instalación
-
-```bash
-npm install
-```
-
-## 🚀 Uso
-
-### Desarrollo
-```bash
-npm run dev
-```
-
-### Producción
-```bash
-npm start
-```
+- **Autenticación (`/api/auth`):** `register`, `login`, `create-station`, `employees`.
+- **Gestión de Sesión (`/api/whatsapp`):** `init`, `logout`.
+- **Permisos (`/api/permissions`):** `assign`, `revoke`.
+- **Chats (`/api/chats`):** `GET /`, `GET /:chatId/messages`, `POST /:chatId/messages`.
+- **Media (`/api/media`):** `GET /:messageId`, `GET /profile-photo/:chatId`.
