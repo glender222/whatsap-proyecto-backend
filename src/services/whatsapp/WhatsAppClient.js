@@ -69,6 +69,7 @@ class WhatsAppClient {
       }),
       puppeteer: {
         headless: true,
+        executablePath: process.env.CHROME_PATH, // Permite especificar la ruta de Chrome
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
