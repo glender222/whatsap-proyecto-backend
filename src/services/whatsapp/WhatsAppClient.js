@@ -67,6 +67,18 @@ class WhatsAppClient {
         clientId: `session-${this.adminId}`,
         dataPath: sessionPath
       }),
+      puppeteer: {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu'
+        ],
+      }
     });
 
     this.eventHandler.setupEventHandlers(this.client);
@@ -84,13 +96,23 @@ class WhatsAppClient {
     } catch (error) {
       console.error('❌ Error o timeout en initialize:', error.message);
       
-      // Si hay timeout o error, intentar limpiar sesión corrupta
-      if (error.message.includes('timeout') || error.message.includes('ECONNRESET')) {
-        console.log('🧹 Limpiando posible sesión corrupta...');
-        this.clearLocalData();
-        throw new Error('Session timeout - please try again');
+      console.log('🧹 Limpiando posible sesión corrupta tras error en initialize...');
+      try {
+        if (this.client) {
+          // Intentar destruir el cliente para cerrar el navegador y liberar archivos
+          await this.client.destroy();
+          console.log('✅ Cliente destruido después del fallo.');
+        }
+      } catch (destroyError) {
+        console.warn('⚠️ Error al destruir el cliente después del fallo (la limpieza continuará):', destroyError.message);
       }
-      throw error;
+
+      // Limpiar los datos de la sesión y resetear el estado
+      this.clearLocalData();
+      this.client = null; // Asegurarse de que la instancia del cliente se elimine
+
+      // Re-lanzar el error para que el llamador (SessionManager) sepa que falló
+      throw new Error(`Fallo en la inicialización: ${error.message}. La sesión se ha limpiado.`);
     }
   }
 
