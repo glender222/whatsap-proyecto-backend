@@ -5,12 +5,13 @@ const stateManager = require('../stateManager');
 const LOCK_REFRESH_INTERVAL_MS = 8000; // 8 segundos
 
 class EventHandler {
-  constructor(whatsappClient, onDisconnectedCallback) {
+  constructor(whatsappClient, onDisconnectedCallback, tempLockRefreshInterval = null) {
     this.whatsappClient = whatsappClient;
     this.onDisconnected = onDisconnectedCallback;
     this.adminId = this.whatsappClient.adminId; // Guardar adminId para fácil acceso
     this.tenantRoom = `tenant:${this.adminId}`; // Sala de socket para este tenant
-    this.lockRefreshInterval = null; // Referencia al intervalo de refresco del lock
+    this.lockRefreshInterval = null; // Referencia al intervalo de refresco PERMANENTE
+    this.tempLockRefreshInterval = tempLockRefreshInterval; // Ref al intervalo TEMPORAL
   }
 
   setupEventHandlers(client) {
@@ -33,15 +34,21 @@ class EventHandler {
 
   async handleReady() {
     console.log(`[${this.adminId}] ✅ WhatsApp conectado!`);
-    this.whatsappClient.isConnected = true;
-    
-    if (this.whatsappClient.socketIO) {
-      // Notificar a todo el tenant que la sesión está lista
-      this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", { status: "connected" });
+
+    // 1. Detener el intervalo temporal que venía de SessionManager
+    if (this.tempLockRefreshInterval) {
+      clearInterval(this.tempLockRefreshInterval);
+      this.tempLockRefreshInterval = null;
+      console.log(`[${this.adminId}]  handover: Intervalo de lock temporal detenido.`);
     }
 
-    // Iniciar el proceso de renovación del lock
+    // 2. Iniciar el proceso de renovación de lock permanente, gestionado por EventHandler
     this.startLockRefresh();
+
+    this.whatsappClient.isConnected = true;
+    if (this.whatsappClient.socketIO) {
+      this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", { status: "connected" });
+    }
     
     try {
       await this.whatsappClient.chatManager.loadChats();
@@ -134,10 +141,17 @@ class EventHandler {
    * Detiene el intervalo de refresco del lock.
    */
   stopLockRefresh() {
+    // Detener el intervalo permanente
     if (this.lockRefreshInterval) {
       clearInterval(this.lockRefreshInterval);
       this.lockRefreshInterval = null;
-      console.log(`[${this.adminId}] 🛑 Intervalo de refresco del lock detenido.`);
+      console.log(`[${this.adminId}] 🛑 Intervalo de refresco del lock permanente detenido.`);
+    }
+    // Por seguridad, detener también el temporal si aún existiera
+    if (this.tempLockRefreshInterval) {
+      clearInterval(this.tempLockRefreshInterval);
+      this.tempLockRefreshInterval = null;
+      console.log(`[${this.adminId}] 🛑 Intervalo de refresco del lock temporal detenido.`);
     }
   }
 }

@@ -13,7 +13,7 @@ const MessageHandler = require("./MessageHandler");
 const MediaHandler = require("./MediaHandler");
 
 class WhatsAppClient {
-  constructor(adminId, onDisconnectedCallback = () => {}) {
+  constructor(adminId, onDisconnectedCallback = () => {}, tempLockRefreshInterval = null) {
     if (!adminId) {
       throw new Error('WhatsAppClient requiere un adminId');
     }
@@ -27,8 +27,8 @@ class WhatsAppClient {
     this.cacheFilePath = path.join(config.whatsapp.sessionPath, `session-${this.adminId}`, '.chats-cache.json');
     this._pollInterval = null;
     
-    // Inicializar componentes
-    this.eventHandler = new EventHandler(this, onDisconnectedCallback);
+    // Inicializar componentes, pasando el intervalo temporal al EventHandler
+    this.eventHandler = new EventHandler(this, onDisconnectedCallback, tempLockRefreshInterval);
     this.chatManager = new ChatManager(this);
     this.messageHandler = new MessageHandler(this);
     this.mediaHandler = new MediaHandler(this);
