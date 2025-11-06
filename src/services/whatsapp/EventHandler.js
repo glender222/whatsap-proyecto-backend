@@ -35,26 +35,34 @@ class EventHandler {
   async handleReady() {
     console.log(`[${this.adminId}] ✅ WhatsApp conectado!`);
 
-    // 1. Detener el intervalo temporal que venía de SessionManager
+    // 1. Detener el intervalo temporal que venía de SessionManager.
     if (this.tempLockRefreshInterval) {
       clearInterval(this.tempLockRefreshInterval);
       this.tempLockRefreshInterval = null;
-      console.log(`[${this.adminId}]  handover: Intervalo de lock temporal detenido.`);
+      console.log(`[${this.adminId}] Handover: Intervalo de lock temporal detenido.`);
     }
 
-    // 2. Iniciar el proceso de renovación de lock permanente, gestionado por EventHandler
-    this.startLockRefresh();
-
-    this.whatsappClient.isConnected = true;
-    if (this.whatsappClient.socketIO) {
-      this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", { status: "connected" });
-    }
-    
     try {
+      // 2. REALIZAR UN REFRESH INMEDIATO. Esto cierra la "ventana de vulnerabilidad".
+      await stateManager.refreshLock(this.adminId);
+      console.log(`[${this.adminId}] Handover: Lock refrescado inmediatamente.`);
+
+      // 3. Iniciar el proceso de renovación de lock permanente, gestionado por EventHandler.
+      this.startLockRefresh();
+
+      this.whatsappClient.isConnected = true;
+      if (this.whatsappClient.socketIO) {
+        this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", { status: "connected" });
+      }
+
       await this.whatsappClient.chatManager.loadChats();
       console.log(`[${this.adminId}] ✅ Chats cargados.`);
+
     } catch (err) {
-      console.error(`[${this.adminId}] ❌ Error cargando chats:`, err);
+      // Si el refresh inmediato falla, significa que perdimos el lock justo en la transición.
+      console.error(`[${this.adminId}] ❌ Error crítico durante el handover del lock:`, err.message);
+      this.stopLockRefresh(); // Asegurarse de que no queden intervalos.
+      this.whatsappClient.logout(); // Forzar logout para una recuperación limpia.
     }
   }
 
