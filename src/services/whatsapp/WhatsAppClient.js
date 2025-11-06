@@ -188,8 +188,11 @@ class WhatsAppClient {
    * Cierra sesión y limpia datos
    */
   async logout() {
-    console.log("🔴 Iniciando proceso de logout...");
+    console.log(`[${this.adminId}] 🔴 Iniciando proceso de logout...`);
     
+    // Detener inmediatamente el refresco del lock para evitar renovaciones accidentales
+    this.eventHandler.stopLockRefresh();
+
     // Marcar como logout intencional
     this.isIntentionalLogout = true;
     

@@ -2,12 +2,15 @@ const qrcode = require("qrcode");
 const ChatPermission = require("../../models/ChatPermission");
 const stateManager = require('../stateManager');
 
+const LOCK_REFRESH_INTERVAL_MS = 8000; // 8 segundos
+
 class EventHandler {
   constructor(whatsappClient, onDisconnectedCallback) {
     this.whatsappClient = whatsappClient;
     this.onDisconnected = onDisconnectedCallback;
     this.adminId = this.whatsappClient.adminId; // Guardar adminId para fácil acceso
     this.tenantRoom = `tenant:${this.adminId}`; // Sala de socket para este tenant
+    this.lockRefreshInterval = null; // Referencia al intervalo de refresco del lock
   }
 
   setupEventHandlers(client) {
@@ -36,6 +39,9 @@ class EventHandler {
       // Notificar a todo el tenant que la sesión está lista
       this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", { status: "connected" });
     }
+
+    // Iniciar el proceso de renovación del lock
+    this.startLockRefresh();
     
     try {
       await this.whatsappClient.chatManager.loadChats();
@@ -48,9 +54,12 @@ class EventHandler {
   async handleDisconnected(reason) {
     console.log(`[${this.adminId}] WhatsApp desconectado:`, reason);
     
+    // Detener el refresco del lock ANTES de liberar el lock
+    this.stopLockRefresh();
+
     // Liberar el lock para que otra instancia/proceso pueda tomar el control
     await stateManager.releaseLock(this.adminId);
-    this.onDisconnected(); // Detener el refresco del lock
+    this.onDisconnected(); // Callback para notificar al SessionManager
 
     this.whatsappClient.isConnected = false;
     
@@ -93,6 +102,43 @@ class EventHandler {
     // Notificar a todo el tenant que la lista de chats ha sido actualizada
     // El frontend se encargará de refrescar su lista, que ya viene filtrada por el backend.
     this.whatsappClient.socketIO.to(this.tenantRoom).emit("chats-updated");
+  }
+
+  /**
+   * Inicia el intervalo para refrescar el lock de Redis.
+   */
+  startLockRefresh() {
+    if (this.lockRefreshInterval) {
+      clearInterval(this.lockRefreshInterval);
+    }
+
+    this.lockRefreshInterval = setInterval(async () => {
+      try {
+        await stateManager.refreshLock(this.adminId);
+        console.log(`[${this.adminId}] 🔄 Lock refrescado exitosamente.`);
+      } catch (error) {
+        console.error(`[${this.adminId}] ❌ Error al refrescar el lock: ${error.message}. Esta instancia ha perdido el control.`);
+        console.log(`[${this.adminId}] 🔴 Forzando logout para permitir que otra instancia tome el control...`);
+
+        // Detener el intervalo inmediatamente para no seguir intentando
+        this.stopLockRefresh();
+
+        // Forzar un logout para limpiar el estado y permitir que otra instancia tome el control.
+        // No usamos 'await' para no bloquear el intervalo. El logout se encargará del resto.
+        this.whatsappClient.logout();
+      }
+    }, LOCK_REFRESH_INTERVAL_MS);
+  }
+
+  /**
+   * Detiene el intervalo de refresco del lock.
+   */
+  stopLockRefresh() {
+    if (this.lockRefreshInterval) {
+      clearInterval(this.lockRefreshInterval);
+      this.lockRefreshInterval = null;
+      console.log(`[${this.adminId}] 🛑 Intervalo de refresco del lock detenido.`);
+    }
   }
 }
 
