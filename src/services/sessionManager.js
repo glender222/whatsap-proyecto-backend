@@ -8,7 +8,8 @@ class SessionManager {
     if (instance) {
       return instance;
     }
-    this.sessions = new Map(); // Map<adminId, WhatsAppClient>
+    this.sessions = new Map(); // Almacena clientes activos: Map<adminId, WhatsAppClient>
+    this.startingSessions = new Set(); // Previene race conditions: Set<adminId>
     this.io = null;
     instance = this;
   }
@@ -27,51 +28,63 @@ class SessionManager {
    * @returns {Promise<WhatsAppClient>}
    */
   async startSession(adminId) {
-    // 1. Adquirir el lock ANTES de iniciar cualquier cosa
-    const lockAcquired = await stateManager.acquireLock(adminId);
-    if (!lockAcquired) {
-      // Este caso es normal en un entorno multi-instancia. Significa que otra instancia ya está trabajando.
-      console.log(`[SessionManager] No se pudo adquirir el lock para el admin ${adminId}. Otra instancia probablemente ya tiene el control.`);
-      throw new Error(`No se pudo adquirir el lock para iniciar la sesión del admin ${adminId}.`);
+    // 1. Prevenir Race Conditions: Verificar si ya se está iniciando una sesión para este admin
+    if (this.startingSessions.has(adminId)) {
+      console.warn(`[SessionManager] Intento duplicado de iniciar sesión para el admin ${adminId} mientras ya estaba en proceso.`);
+      throw new Error(`La sesión para el admin ${adminId} ya se está iniciando.`);
+    }
+    if (this.sessions.has(adminId)) {
+        return this.sessions.get(adminId);
     }
 
-    // 2. Si se adquiere el lock, iniciar el refresco TEMPORAL
-    let tempLockRefreshInterval = setInterval(() => {
-      stateManager.refreshLock(adminId).catch(err => {
-        console.error(`[SessionManager] Error crítico: Fallo al refrescar el lock TEMPORAL para ${adminId}. Limpiando intervalo.`, err);
-        clearInterval(tempLockRefreshInterval);
-      });
-    }, 8000); // 8 segundos
-
-    console.log(`[SessionManager] Lock adquirido para ${adminId}. Iniciando cliente de WhatsApp...`);
-
-    const onDisconnected = () => {
-      console.log(`[SessionManager] Sesión para el admin ${adminId} desconectada. Limpiando...`);
-      this.sessions.delete(adminId);
-      // La liberación del lock y la detención del intervalo permanente ya se manejan en EventHandler
-    };
-
-    // Pasar el intervalo temporal al cliente
-    const client = new WhatsAppClient(adminId, onDisconnected, tempLockRefreshInterval);
-    if (this.io) {
-      client.setSocketIO(this.io);
-    }
-
-    this.sessions.set(adminId, client);
+    this.startingSessions.add(adminId); // Poner el "cerrojo"
+    let tempLockRefreshInterval = null;
 
     try {
+      // 2. Adquirir el lock distribuido
+      const lockAcquired = await stateManager.acquireLock(adminId);
+      if (!lockAcquired) {
+        throw new Error(`No se pudo adquirir el lock para iniciar la sesión del admin ${adminId}. Otra instancia tiene el control.`);
+      }
+
+      // 3. Iniciar el refresco TEMPORAL del lock
+      tempLockRefreshInterval = setInterval(() => {
+        stateManager.refreshLock(adminId).catch(err => {
+          console.error(`[SessionManager] Error crítico: Fallo al refrescar el lock TEMPORAL para ${adminId}.`, err);
+          clearInterval(tempLockRefreshInterval);
+        });
+      }, 8000);
+
+      console.log(`[SessionManager] Lock adquirido para ${adminId}. Iniciando cliente...`);
+
+      const onDisconnected = () => {
+        console.log(`[SessionManager] Sesión para ${adminId} desconectada. Limpiando...`);
+        this.sessions.delete(adminId);
+      };
+
+      const client = new WhatsAppClient(adminId, onDisconnected, tempLockRefreshInterval);
+      if (this.io) {
+        client.setSocketIO(this.io);
+      }
+
       await client.initialize();
-      console.log(`[SessionManager] Sesión para el admin ${adminId} inicializada correctamente.`);
+
+      this.sessions.set(adminId, client);
+      console.log(`[SessionManager] Sesión para ${adminId} inicializada correctamente.`);
       return client;
+
     } catch (error) {
-      console.error(`[SessionManager] Error al iniciar la sesión para el admin ${adminId}:`, error);
-
-      // Si la inicialización falla, es CRÍTICO limpiar todo
-      clearInterval(tempLockRefreshInterval);
+      console.error(`[SessionManager] Error al iniciar la sesión para ${adminId}:`, error.message);
+      // Si algo falla, limpiar los recursos que se hayan podido crear
+      if (tempLockRefreshInterval) {
+        clearInterval(tempLockRefreshInterval);
+      }
+      // Liberar el lock solo si se llegó a adquirir (esto es idempotente)
       await stateManager.releaseLock(adminId);
-      this.sessions.delete(adminId);
-
       throw error;
+    } finally {
+      // 4. Quitar el "cerrojo" sin importar si hubo éxito o error
+      this.startingSessions.delete(adminId);
     }
   }
 
