@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Cliente de Test para Socket.IO</title>
+</head>
+<body>
+  <h1>Receptor de Código QR</h1>
+  <div id="qr-container"></div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    // PEGA AQUÍ EL TOKEN DE ADMIN QUE OBTUVISTE EN EL PASO 1
+    const jwtToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIzIiwiZW1haWwiOiJqdWFuOUBlbXByZXNhLmNvbSIsIm5vbWJyZSI6Ikp1YXciLCJyb2wiOiJBRE1JTiIsImlkUGFkcmUiOm51bGwsImlhdCI6MTc2MjMxMjUyNywiZXhwIjoxNzYyMzk4OTI3fQ.j-i-heNTN9MBHCPhF4pXyLVhySuepxodb-8LxBFOkAE"; 
+
+    const socket = io("http://localhost:3000", {
+      auth: {
+        token: jwtToken
+      }
+    });
+
+    socket.on('connect', () => {
+      console.log('¡Conectado y autenticado al servidor!');
+      document.getElementById('qr-container').innerHTML = '<p>Esperando código QR...</p>';
+    });
+
+    socket.on('qr', (qrDataUrl) => {
+      console.log('¡Código QR recibido!');
+      const container = document.getElementById('qr-container');
+      container.innerHTML = `<p>Escanea este código:</p><img src="${qrDataUrl}" alt="Código QR de WhatsApp">`;
+    });
+    
+    socket.on('ready', () => {
+      document.getElementById('qr-container').innerHTML = '<h2>¡WhatsApp Conectado!</h2>';
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Desconectado del servidor.');
+    });
+  </script>
+</body>
+</html>
