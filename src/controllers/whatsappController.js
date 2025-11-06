@@ -13,28 +13,24 @@ class WhatsAppController {
   initialize = asyncHandler(async (req, res) => {
     const adminId = req.user.userId;
 
-    // Verificar si ya existe una sesión activa en el SessionManager
-    if (this.sessionManager.getSession(adminId)) {
-      return res.status(400).json({ success: false, error: 'La sesión para este administrador ya está activa.' });
-    }
-
-    // Intentar adquirir el lock específico para este admin
-    const lockAcquired = await stateManager.acquireLock(adminId);
-    if (!lockAcquired) {
-      return res.status(409).json({ success: false, error: 'Ya hay un proceso de inicialización en curso para esta cuenta.' });
-    }
-
     try {
-      // Iniciar la sesión a través del SessionManager
+      // Toda la lógica compleja, incluyendo la prevención de sesiones duplicadas
+      // y la gestión de locks, ahora está encapsulada en el SessionManager.
       await this.sessionManager.startSession(adminId);
 
-      // Nota: El SessionManager es ahora responsable de mantener el lock vivo.
-
-      res.status(200).json({ success: true, message: 'Inicialización de sesión comenzada. Escanee el QR si es necesario.' });
+      res.status(200).json({
+        success: true,
+        message: 'Inicialización de sesión comenzada. Escanee el QR si es necesario.'
+      });
     } catch (error) {
-      // Si algo falla durante el inicio, liberar el lock
-      await stateManager.releaseLock(adminId);
-      res.status(500).json({ success: false, error: 'No se pudo inicializar la sesión de WhatsApp.', details: error.message });
+      // El SessionManager ahora arroja errores descriptivos que podemos pasar al cliente.
+      // Por ejemplo: "La sesión ya se está iniciando" o "No se pudo adquirir el lock".
+      // Usamos un código 409 (Conflicto) para estos casos.
+      res.status(409).json({
+        success: false,
+        error: 'No se pudo inicializar la sesión.',
+        details: error.message
+      });
     }
   });
 
