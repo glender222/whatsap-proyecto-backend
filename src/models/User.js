@@ -68,6 +68,14 @@ class User {
       await pool.query(rtIndexQuery);
       console.log('✅ Índices de refresh_tokens creados correctamente');
 
+      // PASO 6: Añadir columna para número de WhatsApp si no existe
+      const addWhatsappColumn = `
+        ALTER TABLE usuarios
+        ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(32);
+      `;
+      await pool.query(addWhatsappColumn);
+      console.log('✅ Columna whatsapp_number creada o ya existe');
+
       console.log('✅ Base de datos inicializada correctamente');
       
     } catch (error) {
@@ -102,7 +110,7 @@ class User {
    */
   static async findByEmail(email) {
     const query = `
-      SELECT id, nombre, email, password_hash, rol, id_padre, activo, fecha_creacion
+      SELECT id, nombre, email, password_hash, rol, id_padre, activo, fecha_creacion, whatsapp_number
       FROM usuarios
       WHERE email = $1 AND activo = true
     `;
@@ -116,7 +124,7 @@ class User {
    */
   static async findById(id) {
     const query = `
-      SELECT id, nombre, email, rol, id_padre, activo, fecha_creacion
+      SELECT id, nombre, email, rol, id_padre, activo, fecha_creacion, whatsapp_number
       FROM usuarios
       WHERE id = $1 AND activo = true
     `;
@@ -130,7 +138,7 @@ class User {
    */
   static async findEmployeesByOwner(ownerId) {
     const query = `
-      SELECT id, nombre, email, rol, id_padre, activo, fecha_creacion
+      SELECT id, nombre, email, rol, id_padre, activo, fecha_creacion, whatsapp_number
       FROM usuarios
       WHERE id_padre = $1 AND activo = true
     `;

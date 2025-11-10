@@ -14,6 +14,8 @@ const SocketHandler = require("./sockets/socketHandler");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const User = require("./models/User");
 const ChatPermission = require("./models/ChatPermission");
+const Tag = require("./models/Tag");
+const ChatTag = require("./models/ChatTag");
 const stateManager = require("./services/stateManager");
 
 // Importar rutas
@@ -22,6 +24,7 @@ const createChatRoutes = require("./routes/chatRoutes");
 const createMediaRoutes = require("./routes/mediaRoutes");
 const permissionRoutes = require("./routes/permissionRoutes");
 const createWhatsAppRoutes = require("./routes/whatsappRoutes");
+const tagRoutes = require("./routes/tagRoutes");
 
 class App {
   constructor() {
@@ -60,14 +63,35 @@ class App {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 
-    // Rate limiting
+    // Servir públicamente archivos estáticos:
+    // - Fotos de perfil en /profile-data
+    this.app.use('/profile-data', express.static(config.whatsapp.profileDir));
+    // - Archivos multimedia descargados en /uploads
+    this.app.use('/uploads', express.static(config.whatsapp.uploadDir));
+
+    // Rate limiting - Aplicar solo a rutas de autenticación y sensibles
     const limiter = rateLimit({
       windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
       max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
-      message: 'Demasiadas solicitudes, intenta más tarde'
+      message: 'Demasiadas solicitudes, intenta más tarde',
+      skip: (req) => {
+        // Excluir WebSockets y rutas de lectura
+        const excludedRoutes = ['/api/chats', '/api/whatsapp/qr', '/api/media'];
+        return excludedRoutes.some(route => req.path.startsWith(route)) && req.method === 'GET';
+      }
     });
 
-    this.app.use('/api/', limiter);
+    // Aplicar solo a rutas de autenticación (más críticas)
+    this.app.use('/api/auth', limiter);
+    
+    // Rate limiting menos restrictivo para otras rutas
+    const generalLimiter = rateLimit({
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '500'),
+      message: 'Demasiadas solicitudes, intenta más tarde',
+      skip: (req) => req.method === 'GET' // No limitar GETs en general
+    });
+    this.app.use('/api/', generalLimiter);
   }
 
   setupSwagger() {
@@ -90,6 +114,8 @@ class App {
     try {
       await User.createTableIfNotExists();
       await ChatPermission.createTableIfNotExists();
+      await Tag.createTableIfNotExists();
+      await ChatTag.createTableIfNotExists();
       console.log('✅ Base de datos inicializada');
     } catch (error) {
       console.error('❌ Error inicializando BD:', error);
@@ -103,6 +129,7 @@ class App {
     this.app.use("/api/media", createMediaRoutes(this.sessionManager));
     this.app.use("/api/permissions", permissionRoutes); // Este no necesita el servicio
     this.app.use("/api/whatsapp", createWhatsAppRoutes(this.sessionManager));
+    this.app.use("/api/tags", tagRoutes(this.sessionManager));
 
     // Health check
     this.app.get('/health', (req, res) => {

@@ -118,6 +118,16 @@ const { validateJWT, requireAdmin } = require('../middleware/authMiddleware');
  *     responses:
  *       200:
  *         description: Información del usuario
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/User'
  *       401:
  *         description: Token no proporcionado o inválido
  */
@@ -154,7 +164,7 @@ const { validateJWT, requireAdmin } = require('../middleware/authMiddleware');
  *     tags:
  *       - Estaciones de Trabajo
  *     summary: Crear estación de trabajo (ADMIN solo)
- *     description: Solo los DUEÑO (ADMIN) pueden crear empleados. Se genera automáticamente una contraseña temporal.
+ *     description: Solo los DUEÑO (ADMIN) pueden crear empleados. Puedes proporcionar una contraseña personalizada o dejar que se genere automáticamente.
  *     security:
  *       - BearerAuth: []
  *     requestBody:
@@ -163,6 +173,9 @@ const { validateJWT, requireAdmin } = require('../middleware/authMiddleware');
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - nombre
+ *               - email
  *             properties:
  *               nombre:
  *                 type: string
@@ -171,6 +184,11 @@ const { validateJWT, requireAdmin } = require('../middleware/authMiddleware');
  *                 type: string
  *                 format: email
  *                 example: "carlos@empresa.com"
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "MiPassword123!"
+ *                 description: "Opcional. Si no se proporciona, se generará automáticamente. Mínimo 6 caracteres."
  *     responses:
  *       201:
  *         description: Estación de trabajo creada exitosamente
@@ -195,6 +213,140 @@ const { validateJWT, requireAdmin } = require('../middleware/authMiddleware');
  *         description: Solo administradores pueden acceder
  */
 
+/**
+ * @swagger
+ * /auth/employees/{id}:
+ *   get:
+ *     tags:
+ *       - Estaciones de Trabajo
+ *     summary: Obtener un empleado específico
+ *     description: Obtiene la información de un empleado por su ID
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del empleado
+ *     responses:
+ *       200:
+ *         description: Información del empleado
+ *       403:
+ *         description: Solo administradores pueden acceder
+ *       404:
+ *         description: Empleado no encontrado
+ */
+
+/**
+ * @swagger
+ * /auth/employees/{id}:
+ *   put:
+ *     tags:
+ *       - Estaciones de Trabajo
+ *     summary: Actualizar un empleado
+ *     description: Actualiza la información de un empleado (nombre, email y/o contraseña)
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del empleado
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nombre:
+ *                 type: string
+ *                 example: "Carlos López Actualizado"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "carlos.nuevo@empresa.com"
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "NuevaPassword123!"
+ *                 description: "Opcional. Mínimo 6 caracteres."
+ *     responses:
+ *       200:
+ *         description: Empleado actualizado exitosamente
+ *       403:
+ *         description: Solo administradores pueden actualizar empleados
+ *       404:
+ *         description: Empleado no encontrado
+ */
+
+/**
+ * @swagger
+ * /auth/employees/{id}/reset-password:
+ *   post:
+ *     summary: Resetear contraseña de un empleado (solo ADMIN)
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del empleado
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "NuevaPassword123!"
+ *                 description: "Opcional. Si no se proporciona, se genera una contraseña aleatoria. Mínimo 6 caracteres."
+ *     responses:
+ *       200:
+ *         description: Contraseña reseteada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       example: "9"
+ *                     nombre:
+ *                       type: string
+ *                       example: "PC luchito"
+ *                     email:
+ *                       type: string
+ *                       example: "leroy324"
+ *                     newPassword:
+ *                       type: string
+ *                       example: "Abc123XyZ"
+ *                       description: "Nueva contraseña en texto plano (SOLO se muestra en este endpoint)"
+ *                     message:
+ *                       type: string
+ *                       example: "Contraseña reseteada. Guarda esta contraseña, no se mostrará nuevamente"
+ *       403:
+ *         description: Solo administradores pueden resetear contraseñas
+ *       404:
+ *         description: Empleado no encontrado
+ */
+
 function createAuthRoutes(whatsappService) {
   const router = express.Router();
   const authController = new AuthController(whatsappService);
@@ -213,8 +365,13 @@ function createAuthRoutes(whatsappService) {
   router.post('/refresh', validateJWT, authController.refresh);
   router.get('/me', validateJWT, authController.getMe);
   router.post('/logout', validateJWT, authController.logout);
+  
+  // Gestión de empleados
   router.post('/create-station', validateJWT, requireAdmin, authController.createStation);
   router.get('/employees', validateJWT, requireAdmin, authController.getEmployees);
+  router.get('/employees/:id', validateJWT, requireAdmin, authController.getEmployeeById);
+  router.put('/employees/:id', validateJWT, requireAdmin, authController.updateEmployee);
+  router.post('/employees/:id/reset-password', validateJWT, requireAdmin, authController.resetEmployeePassword);
 
   // ========================
   // WhatsApp Routes (Legacy)

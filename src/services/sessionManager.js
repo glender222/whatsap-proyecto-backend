@@ -97,13 +97,24 @@ class SessionManager {
     const client = this.sessions.get(adminId);
     if (!client) {
       console.warn(`[SessionManager] No se encontró una sesión activa para el admin ${adminId} para detener.`);
+      // Intentar liberar el lock de todas formas por si quedó colgado
+      await stateManager.releaseLock(adminId);
       return false;
     }
 
     console.log(`[SessionManager] Deteniendo sesión para el admin ${adminId}...`);
-    await client.logout(); // logout() maneja la destrucción y limpieza.
+    
+    // logout() maneja la destrucción y limpieza completa del cliente
+    await client.logout();
+    
+    // Liberar el lock de Redis para permitir que otras instancias (o una futura sesión) puedan tomar el control
+    console.log(`[SessionManager] Liberando lock de Redis para ${adminId}...`);
+    await stateManager.releaseLock(adminId);
+    
+    // Eliminar la sesión del Map
     this.sessions.delete(adminId);
-    console.log(`[SessionManager] Sesión para el admin ${adminId} detenida.`);
+    
+    console.log(`[SessionManager] Sesión para el admin ${adminId} detenida y limpiada completamente.`);
     return true;
   }
 

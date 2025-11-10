@@ -49,6 +49,12 @@ function createWhatsAppRoutes(sessionManager) { // Recibe sessionManager
    */
   router.post('/logout', validateJWT, requireAdmin, whatsAppController.logout);
 
+  /**
+   * GET /whatsapp/qr
+   * Devuelve la última imagen QR (data URL) para el admin autenticado.
+   */
+  router.get('/qr', validateJWT, requireAdmin, whatsAppController.getQR);
+
 
   return router;
 }

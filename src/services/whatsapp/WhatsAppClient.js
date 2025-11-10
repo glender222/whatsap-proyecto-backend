@@ -185,10 +185,10 @@ class WhatsAppClient {
   }
 
   /**
-   * Cierra sesión y limpia datos
+   * Cierra sesión y limpia datos COMPLETAMENTE (sin reinicializar)
    */
   async logout() {
-    console.log(`[${this.adminId}] 🔴 Iniciando proceso de logout...`);
+    console.log(`[${this.adminId}] 🔴 Iniciando proceso de logout COMPLETO...`);
     
     // Detener inmediatamente el refresco del lock para evitar renovaciones accidentales
     this.eventHandler.stopLockRefresh();
@@ -204,12 +204,12 @@ class WhatsAppClient {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
-    // PASO 2: Intentar cerrar WhatsApp (pero NO fallar si ya está cerrado)
+    // PASO 2: Intentar cerrar WhatsApp (desconexión REAL del teléfono)
     try {
       if (this.client && this.client.getState() !== "DISCONNECTED") {
-        console.log("🔴 Cerrando sesión de WhatsApp...");
+        console.log("🔴 Cerrando sesión de WhatsApp (esto desconectará del teléfono)...");
         await this.client.logout();
-        console.log("✅ Sesión de WhatsApp cerrada");
+        console.log("✅ Sesión de WhatsApp cerrada - el teléfono debe mostrar 'desconectado'");
       } else {
         console.log("⚠️ WhatsApp ya estaba desconectado");
       }
@@ -217,7 +217,7 @@ class WhatsAppClient {
       console.warn("⚠️ Error al cerrar sesión de WhatsApp (continuando limpieza):", error.message);
     }
     
-    // PASO 3: Intentar destruir cliente (pero NO fallar si ya está destruido)
+    // PASO 3: Destruir cliente (cierra navegador puppeteer)
     try {
       if (this.client) {
         console.log("🔴 Destruyendo cliente...");
@@ -228,8 +228,8 @@ class WhatsAppClient {
       console.warn("⚠️ Error al destruir cliente (continuando limpieza):", error.message);
     }
     
-    // PASO 4: AHORA SÍ limpiar datos locales y notificar vacío
-    console.log("🔴 Limpiando datos locales...");
+    // PASO 4: Limpiar TODOS los datos locales (sesión, cache, uploads, fotos)
+    console.log("🔴 Limpiando TODOS los datos locales...");
     this.clearLocalData();
     
     if (this.socketIO) {
@@ -243,31 +243,15 @@ class WhatsAppClient {
     // Resetear marca de logout intencional
     this.isIntentionalLogout = false;
     
-    console.log("✅ Logout completado exitosamente");
+    console.log("✅ Logout COMPLETO exitoso - sesión eliminada permanentemente");
     
-    // PASO 6: Reinicializar automáticamente para generar nuevo QR
-    console.log("🔄 Reinicializando cliente para nueva sesión...");
-    try {
-      // Esperar un momento antes de reinicializar
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      await this.initialize();
-      console.log("✅ Cliente reinicializado - esperando QR para nueva sesión");
-    } catch (error) {
-      console.error("❌ Error al reinicializar cliente después de logout:", error.message);
-      // Notificar al frontend del error
-      if (this.socketIO) {
-        this.socketIO.emit("auth_failure", { 
-          message: "Error al reinicializar - por favor recarga la página", 
-          status: "error" 
-        });
-      }
-    }
+    // NO reinicializamos el cliente - el usuario debe llamar a /init nuevamente si quiere reconectar
     
     return true;
   }
 
   /**
-   * Limpia todos los datos locales (sesión, cache, perfiles)
+   * Limpia todos los datos locales (sesión, cache, perfiles, uploads)
    */
   clearLocalData() {
     this.chatsList = [];
@@ -275,24 +259,48 @@ class WhatsAppClient {
     this.isConnected = false;
     
     const sessionPath = path.join(config.whatsapp.sessionPath, `session-${this.adminId}`);
-    // Limpiar sesión local específica del tenant
+    // 1. Limpiar sesión local específica del tenant
     if (fs.existsSync(sessionPath)) {
+      console.log(`🧹 Eliminando carpeta de sesión: ${sessionPath}`);
       fs.rmSync(sessionPath, { recursive: true, force: true });
+      console.log(`✅ Carpeta de sesión eliminada`);
     }
     
-    // Limpiar cache de perfiles (esto podría ser compartido o también por tenant)
-    // Por ahora, lo mantenemos compartido, pero es un punto a considerar.
+    // 2. Limpiar cache de perfiles (fotos de perfil)
     if (fs.existsSync(config.whatsapp.profileDir)) {
+      console.log(`🧹 Eliminando fotos de perfil en: ${config.whatsapp.profileDir}`);
       const files = fs.readdirSync(config.whatsapp.profileDir);
+      let deletedCount = 0;
       files.forEach(file => {
         const filePath = path.join(config.whatsapp.profileDir, file);
         try {
           fs.unlinkSync(filePath);
+          deletedCount++;
         } catch (e) {
-          console.warn("No se pudo eliminar:", filePath);
+          console.warn("⚠️ No se pudo eliminar:", filePath, e.message);
         }
       });
+      console.log(`✅ ${deletedCount} fotos de perfil eliminadas`);
     }
+    
+    // 3. Limpiar archivos descargados (uploads)
+    if (fs.existsSync(config.whatsapp.uploadDir)) {
+      console.log(`🧹 Eliminando archivos descargados en: ${config.whatsapp.uploadDir}`);
+      const files = fs.readdirSync(config.whatsapp.uploadDir);
+      let deletedCount = 0;
+      files.forEach(file => {
+        const filePath = path.join(config.whatsapp.uploadDir, file);
+        try {
+          fs.unlinkSync(filePath);
+          deletedCount++;
+        } catch (e) {
+          console.warn("⚠️ No se pudo eliminar:", filePath, e.message);
+        }
+      });
+      console.log(`✅ ${deletedCount} archivos descargados eliminados`);
+    }
+    
+    console.log("✅ Limpieza de datos locales completada");
   }
 
   /**

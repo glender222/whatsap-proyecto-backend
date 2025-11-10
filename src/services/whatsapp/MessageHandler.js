@@ -17,6 +17,19 @@ class MessageHandler {
    * @returns {Object} - Mensaje formateado
    */
   formatMessage(msg, chatId) {
+    // Info de media (si existe)
+    let mediaInfo = null;
+    if (msg.hasMedia) {
+      mediaInfo = {
+        hasMedia: true,
+        messageId: msg.id._serialized,
+        type: msg.type === "ptt" ? "audio" : msg.type,
+        mimetype: msg._data?.mimetype || null,
+        filename: msg._data?.filename || null,
+        mediaUrl: `/api/media/${msg.id._serialized}` // URL para descargar bajo demanda
+      };
+    }
+
     return {
       id: msg.id._serialized,
       body: msg.body,
@@ -24,9 +37,8 @@ class MessageHandler {
       timestamp: msg.timestamp,
       sender: msg.author || msg.from,
       type: msg.type === "ptt" ? "audio" : msg.type,
-      mediaUrl: msg.hasMedia ? `/download-media/${msg.id._serialized}` : null,
-      mimetype: msg._data?.mimetype || null,
-      filename: msg._data?.filename || null,
+      hasMedia: msg.hasMedia,
+      media: mediaInfo, // Info de media completa aquí
       chatId: chatId,
     };
   }

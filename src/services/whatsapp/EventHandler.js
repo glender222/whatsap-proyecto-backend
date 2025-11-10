@@ -1,6 +1,7 @@
 const qrcode = require("qrcode");
 const ChatPermission = require("../../models/ChatPermission");
 const stateManager = require('../stateManager');
+const User = require('../../models/User');
 
 const LOCK_REFRESH_INTERVAL_MS = 8000; // 8 segundos
 
@@ -25,6 +26,14 @@ class EventHandler {
     if (!this.whatsappClient.socketIO) return;
     try {
       const qrImage = await qrcode.toDataURL(qr);
+      // Guardar la última imagen QR en la instancia del cliente para que pueda
+      // ser consultada vía API REST si es necesario.
+      try {
+        this.whatsappClient.qrImage = qrImage;
+      } catch (e) {
+        // No bloquear la emisión en caso de fallo al asignar
+        console.warn(`[${this.adminId}] No se pudo guardar qrImage en el cliente:`, e.message);
+      }
       // Emitir QR solo a la sala del admin/tenant que lo solicitó
       this.whatsappClient.socketIO.to(this.tenantRoom).emit("qr", qrImage);
     } catch (error) {
@@ -53,6 +62,22 @@ class EventHandler {
       this.whatsappClient.isConnected = true;
       if (this.whatsappClient.socketIO) {
         this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", { status: "connected" });
+      }
+
+      // Intentar persistir el número de WhatsApp en la tabla usuarios
+      try {
+        const myInfo = this.whatsappClient.getMyInfo ? this.whatsappClient.getMyInfo() : null;
+        if (myInfo && myInfo.user) {
+          // Actualizar el registro del usuario (admin) con el número de WhatsApp
+          try {
+            await User.update(this.adminId, { whatsapp_number: myInfo.user });
+            console.log(`[${this.adminId}] ✅ whatsapp_number actualizado en DB: ${myInfo.user}`);
+          } catch (dbErr) {
+            console.warn(`[${this.adminId}] No se pudo persistir whatsapp_number:`, dbErr.message);
+          }
+        }
+      } catch (err) {
+        console.warn(`[${this.adminId}] Error obteniendo info para persistir whatsapp_number:`, err.message);
       }
 
       await this.whatsappClient.chatManager.loadChats();
@@ -130,7 +155,7 @@ class EventHandler {
     this.lockRefreshInterval = setInterval(async () => {
       try {
         await stateManager.refreshLock(this.adminId);
-        console.log(`[${this.adminId}] 🔄 Lock refrescado exitosamente.`);
+        // Log silenciado - solo mostrar en caso de error
       } catch (error) {
         console.error(`[${this.adminId}] ❌ Error al refrescar el lock: ${error.message}. Esta instancia ha perdido el control.`);
         console.log(`[${this.adminId}] 🔴 Forzando logout para permitir que otra instancia tome el control...`);

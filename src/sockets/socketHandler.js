@@ -32,9 +32,11 @@ class SocketHandler {
         socket.join(socket.user.userId.toString());
         socket.join(`tenant:${tenantId}`);
         
-        // 3. Si no hay sesión activa para su tenant, notificar y terminar.
-        if (!whatsappClient || !whatsappClient.isConnected) {
-          socket.emit('session_status', { status: 'disconnected', message: 'La sesión de WhatsApp para tu organización no está activa.' });
+        // 3. Una sesión es válida si existe en el sessionManager.
+        // No validamos isConnected porque puede estar temporalmente desconectado
+        // (ej: después de refrescar la página) pero la sesión sigue siendo válida.
+        if (!whatsappClient) {
+          socket.emit('session_status', { status: 'disconnected', message: 'La sesión de WhatsApp para tu organización no está activa. Inicia sesión en /api/whatsapp/init' });
         } else {
           // 4. Si hay sesión, enviar la lista de chats inicial.
           this._sendFilteredChats(socket, whatsappClient);
@@ -55,7 +57,7 @@ class SocketHandler {
     socket.on("join", async (chatId) => {
       if (!whatsappClient) return; // No hacer nada si no hay sesión
       socket.join(chatId);
-      console.log(`Socket ${socket.id} se unió al chat: ${chatId}`);
+      // Log silenciado para reducir ruido en consola
       if (!chatId.includes("@newsletter")) {
         try {
           await whatsappClient.messageHandler.markAsRead(chatId);
@@ -67,12 +69,12 @@ class SocketHandler {
 
     socket.on("leave", (chatId) => {
       socket.leave(chatId);
-      console.log(`Socket ${socket.id} dejó el chat: ${chatId}`);
+      // Log silenciado para reducir ruido en consola
     });
 
     socket.on("request-chats", () => {
       if (!whatsappClient) {
-        socket.emit('session_status', { status: 'disconnected', message: 'La sesión no está activa.' });
+        socket.emit('session_status', { status: 'disconnected', message: 'La sesión no está activa. Inicia sesión en /api/whatsapp/init' });
       } else {
         this._sendFilteredChats(socket, whatsappClient);
       }

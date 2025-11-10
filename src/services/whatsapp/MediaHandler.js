@@ -149,24 +149,35 @@ class MediaHandler {
   async getProfilePhoto(chatId) {
     const photoPath = path.join(this.config.whatsapp.profileDir, `${chatId}-photo.jpg`);
     
+    // Si ya existe en cache, devolverla
     if (fs.existsSync(photoPath)) {
       return photoPath;
     }
     
-    const url = await this.whatsappClient.client.getProfilePicUrl(chatId);
-    if (!url) {
-      throw new Error("No hay foto de perfil");
+    try {
+      // Intentar obtener la URL de la foto de perfil
+      const url = await this.whatsappClient.client.getProfilePicUrl(chatId);
+      
+      if (!url) {
+        throw new Error("No hay foto de perfil");
+      }
+      
+      // Descargar la foto
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("Error descargando foto");
+      }
+      
+      const buffer = await response.arrayBuffer();
+      fs.writeFileSync(photoPath, Buffer.from(buffer));
+      
+      // Solo log cuando se descarga exitosamente
+      console.log(`✅ Foto descargada: ${chatId} (${(buffer.byteLength / 1024).toFixed(2)} KB)`);
+      
+      return photoPath;
+    } catch (error) {
+      throw error;
     }
-    
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Error descargando foto");
-    }
-    
-    const buffer = await response.arrayBuffer();
-    fs.writeFileSync(photoPath, Buffer.from(buffer));
-    
-    return photoPath;
   }
 }
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const ChatController = require('../controllers/chatController');
+const TagController = require('../controllers/tagController');
 const config = require('../config');
 const { validateJWT } = require('../middleware/authMiddleware');
 const { injectWhatsAppClient } = require('../utils/sessionUtils');
@@ -126,6 +127,25 @@ function createChatRoutes(sessionManager) { // Recibe sessionManager
    *         description: Sesión de WhatsApp no activa.
    */
   router.put('/:chatId/read', chatController.markAsRead);
+
+  /**
+   * @swagger
+   * /chats/{chatId}/tags:
+   *   get:
+   *     tags: [Chats]
+   *     summary: Obtener etiquetas de un chat
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: chatId
+   *         required: true
+   *         schema: { type: string }
+   *     responses:
+   *       200:
+   *         description: Lista de etiquetas del chat.
+   */
+  router.get('/:chatId/tags', TagController.getTagsByChat);
 
   return router;
 }
