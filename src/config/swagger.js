@@ -43,6 +43,12 @@ const options = {
               type: 'string',
               example: 'juan@empresa.com'
             },
+              whatsappNumber: {
+                type: 'string',
+                nullable: true,
+                description: 'Número de teléfono asociado a la sesión de WhatsApp (sin sufijo @c.us).',
+                example: '5491122334455'
+              },
             rol: {
               type: 'string',
               enum: ['ADMIN', 'EMPLEADO'],
@@ -134,16 +140,131 @@ const options = {
               example: 'Additional error details'
             }
           }
+        },
+        Tag: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'integer',
+              example: 1
+            },
+            name: {
+              type: 'string',
+              example: 'Clientes VIP'
+            },
+            color: {
+              type: 'string',
+              example: '#3B82F6'
+            },
+            owner_id: {
+              type: 'integer',
+              example: 1
+            },
+            is_default: {
+              type: 'boolean',
+              example: false
+            },
+            created_at: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-10-17T00:23:52.000Z'
+            },
+            updated_at: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-10-17T00:23:52.000Z'
+            }
+          }
+        },
+        TagResponse: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: true
+            },
+            message: {
+              type: 'string',
+              example: 'Etiqueta creada exitosamente'
+            },
+            data: {
+              $ref: '#/components/schemas/Tag'
+            }
+          }
+        },
+        TagListResponse: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: true
+            },
+            data: {
+              type: 'array',
+              items: {
+                $ref: '#/components/schemas/Tag'
+              }
+            }
+          }
+        },
+        TagStatsResponse: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: true
+            },
+            data: {
+              type: 'object',
+              properties: {
+                chatCount: {
+                  type: 'integer',
+                  example: 25
+                },
+                userCount: {
+                  type: 'integer',
+                  example: 3
+                }
+              }
+            }
+          }
         }
       }
-    }
+    },
+    tags: [
+      {
+        name: 'Auth',
+        description: 'Autenticación y gestión de usuarios'
+      },
+      {
+        name: 'WhatsApp',
+        description: 'Gestión de sesiones de WhatsApp'
+      },
+      {
+        name: 'Chats',
+        description: 'Gestión de chats y mensajes'
+      },
+      {
+        name: 'Media',
+        description: 'Gestión de archivos multimedia'
+      },
+      {
+        name: 'Permissions',
+        description: 'Gestión de permisos de chat'
+      },
+      {
+        name: 'Tags',
+        description: 'Gestión de etiquetas para organización de chats'
+      }
+    ]
   },
   apis: [
     './src/routes/authRoutes.js',
     './src/routes/permissionRoutes.js',
     './src/routes/whatsappRoutes.js',
     './src/routes/chatRoutes.js',
-    './src/routes/mediaRoutes.js'
+    './src/routes/mediaRoutes.js',
+    './src/routes/tagRoutes.js'
   ]
 };
 

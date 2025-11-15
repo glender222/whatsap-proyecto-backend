@@ -1,5 +1,6 @@
 const { asyncHandler } = require('../middleware/errorHandler');
 const ChatPermission = require('../models/ChatPermission');
+const TagService = require('../services/tagService');
 const fs = require('fs');
 
 class ChatController {
@@ -10,18 +11,32 @@ class ChatController {
 
   // GET /api/chats
   getChats = asyncHandler(async (req, res) => {
-    const { userId, rol } = req.user;
+    const { userId, rol, idPadre } = req.user;
     const whatsappClient = req.whatsappClient; // Cliente correcto inyectado
 
+    // Obtener el adminId (si es admin, es él mismo; si es empleado, es su padre)
+    const adminId = rol === 'ADMIN' ? userId : idPadre;
+
+    // Obtener todos los chats de WhatsApp
     const allChats = await whatsappClient.getChats();
 
-    if (rol === 'ADMIN') {
+    // Obtener IDs de chats accesibles según etiquetas
+    const accessibleChatIds = await TagService.getAccessibleChatIds(userId, rol, adminId);
+
+    // Si accessibleChatIds es null, tiene acceso a TODO (etiqueta "Todo")
+    if (accessibleChatIds === null) {
       return res.json({ success: true, data: allChats });
     }
 
-    // Para empleados, filtrar por permisos
-    const permittedChatIds = await ChatPermission.findByEmployeeId(userId);
-    const filteredChats = allChats.filter(chat => permittedChatIds.includes(chat.id._serialized));
+    // Si es array vacío, no tiene acceso a ningún chat
+    if (accessibleChatIds.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // Filtrar chats por IDs accesibles
+    const filteredChats = allChats.filter(chat => 
+      accessibleChatIds.includes(chat.id._serialized)
+    );
 
     res.json({ success: true, data: filteredChats });
   });
@@ -29,17 +44,18 @@ class ChatController {
   // GET /api/chats/:chatId/messages
   getMessages = asyncHandler(async (req, res) => {
     const { chatId } = req.params;
-    const { userId, rol } = req.user;
+    const { userId, rol, idPadre } = req.user;
     const whatsappClient = req.whatsappClient;
 
     const limit = parseInt(req.query.limit || "50", 10);
 
-    // Verificar permiso si es empleado
-    if (rol === 'EMPLEADO') {
-      const hasPermission = await ChatPermission.hasPermission(userId, chatId);
-      if (!hasPermission) {
-        return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
-      }
+    // Verificar acceso según etiquetas
+    const adminId = rol === 'ADMIN' ? userId : idPadre;
+    const accessibleChatIds = await TagService.getAccessibleChatIds(userId, rol, adminId);
+
+    // Si no es null (acceso total) y el chat no está en la lista, denegar acceso
+    if (accessibleChatIds !== null && !accessibleChatIds.includes(chatId)) {
+      return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
     }
 
     const messages = await whatsappClient.messageHandler.getChatMessages(chatId, limit);
@@ -49,19 +65,20 @@ class ChatController {
   // POST /api/chats/:chatId/messages
   sendMessage = asyncHandler(async (req, res) => {
     const { chatId } = req.params;
-    const { userId, rol } = req.user;
+    const { userId, rol, idPadre } = req.user;
     const whatsappClient = req.whatsappClient;
     const { message } = req.body;
     const file = req.file;
 
-    // Verificar permiso si es empleado
-    if (rol === 'EMPLEADO') {
-      const hasPermission = await ChatPermission.hasPermission(userId, chatId);
-      if (!hasPermission) {
-        // Limpiar archivo subido si no hay permiso
-        if (file && file.path) fs.unlinkSync(file.path);
-        return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
-      }
+    // Verificar acceso según etiquetas
+    const adminId = rol === 'ADMIN' ? userId : idPadre;
+    const accessibleChatIds = await TagService.getAccessibleChatIds(userId, rol, adminId);
+
+    // Si no es null (acceso total) y el chat no está en la lista, denegar acceso
+    if (accessibleChatIds !== null && !accessibleChatIds.includes(chatId)) {
+      // Limpiar archivo subido si no hay permiso
+      if (file && file.path) fs.unlinkSync(file.path);
+      return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
     }
 
     if (!message && !file) {

@@ -1,41 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Cliente de Test para Socket.IO</title>
+<title>Admin 3 – Cliente WhatsApp</title>
+<style>
+  body { font-family: Arial; padding: 20px; background: #f0f0f0; }
+  h1 { color: #25D366; }
+  #qr-container { background: white; padding: 20px; border-radius: 8px; margin-top: 20px; }
+</style>
 </head>
 <body>
-  <h1>Receptor de Código QR</h1>
-  <div id="qr-container"></div>
+<h1>📱 Admin 3 – Receptor de Código QR</h1>
+<div id="qr-container">Esperando conexión...</div>
 
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <script>
-    // PEGA AQUÍ EL TOKEN DE ADMIN QUE OBTUVISTE EN EL PASO 1
-    const jwtToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIzIiwiZW1haWwiOiJqdWFuOUBlbXByZXNhLmNvbSIsIm5vbWJyZSI6Ikp1YXciLCJyb2wiOiJBRE1JTiIsImlkUGFkcmUiOm51bGwsImlhdCI6MTc2MjMxMjUyNywiZXhwIjoxNzYyMzk4OTI3fQ.j-i-heNTN9MBHCPhF4pXyLVhySuepxodb-8LxBFOkAE"; 
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+// 🧩 PEGA AQUÍ EL TOKEN DEL ADMIN 3
+const jwtToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2IiwiZW1haWwiOiJqdWFuMTVAZW1wcmVzYS5jb20iLCJub21icmUiOiJKdWFuIFDDqXJleiIsInJvbCI6IkFETUlOIiwiaWRQYWRyZSI6bnVsbCwiaWF0IjoxNzYyNDQ4Njk5LCJleHAiOjE3NjI1MzUwOTl9.5YVl_s9MsH_9RpjJaN1kEltXEeONCsFM8ULUP4mFHKw";
 
-    const socket = io("http://localhost:3000", {
-      auth: {
-        token: jwtToken
-      }
-    });
+const socket = io("http://localhost:3000", {
+  auth: { token: jwtToken }
+});
 
-    socket.on('connect', () => {
-      console.log('¡Conectado y autenticado al servidor!');
-      document.getElementById('qr-container').innerHTML = '<p>Esperando código QR...</p>';
-    });
+socket.on('connect', () => {
+  console.log('✅ Admin 3 conectado');
+  document.getElementById('qr-container').innerHTML = '<p>⏳ Esperando código QR...</p>';
+});
 
-    socket.on('qr', (qrDataUrl) => {
-      console.log('¡Código QR recibido!');
-      const container = document.getElementById('qr-container');
-      container.innerHTML = `<p>Escanea este código:</p><img src="${qrDataUrl}" alt="Código QR de WhatsApp">`;
-    });
-    
-    socket.on('ready', () => {
-      document.getElementById('qr-container').innerHTML = '<h2>¡WhatsApp Conectado!</h2>';
-    });
+socket.on('qr', (qrDataUrl) => {
+  console.log('📲 QR recibido para Admin 3');
+  document.getElementById('qr-container').innerHTML =
+    `<p><strong>Admin 3</strong> — Escanea este código:</p>
+     <img src="${qrDataUrl}" alt="QR WhatsApp" style="max-width:400px;">`;
+});
 
-    socket.on('disconnect', () => {
-      console.log('Desconectado del servidor.');
-    });
-  </script>
+socket.on('session_status', (data) => {
+  if (data.status === 'connected') {
+    document.getElementById('qr-container').innerHTML =
+      '<h2 style="color:#25D366">✅ Admin 3 – WhatsApp Conectado!</h2>';
+  }
+});
+
+socket.on('disconnect', () => {
+  console.log('❌ Admin 3 desconectado');
+  document.getElementById('qr-container').innerHTML =
+    '<p style="color:red">Desconectado del servidor</p>';
+});
+</script>
 </body>
 </html>

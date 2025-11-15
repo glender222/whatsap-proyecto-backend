@@ -33,10 +33,13 @@ const injectWhatsAppClient = (sessionManager) => async (req, res, next) => {
     const tenantId = await getTenantId(req.user);
     const whatsappClient = sessionManager.getSession(tenantId);
 
-    if (!whatsappClient || !whatsappClient.isConnected) {
+    // Una sesión es válida si existe en el sessionManager
+    // No validamos isConnected porque puede estar temporalmente desconectado
+    // (ej: después de refrescar la página) pero la sesión sigue siendo válida.
+    if (!whatsappClient) {
       return res.status(503).json({
         success: false,
-        error: 'La sesión de WhatsApp para tu organización no está activa.'
+        error: 'La sesión de WhatsApp para tu organización no está activa. Inicia sesión en /api/whatsapp/init'
       });
     }
 
