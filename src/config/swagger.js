@@ -228,6 +228,79 @@ const options = {
               }
             }
           }
+        },
+        Bot: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'integer',
+              example: 1
+            },
+            name: {
+              type: 'string',
+              example: 'Bot Ventas'
+            },
+            owner_id: {
+              type: 'integer',
+              example: 1
+            },
+            is_active: {
+              type: 'boolean',
+              example: true
+            },
+            strategy: {
+              type: 'string',
+              enum: ['round_robin', 'random', 'priority'],
+              example: 'round_robin'
+            },
+            last_assigned_index: {
+              type: 'integer',
+              example: 0
+            },
+            created_at: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updated_at: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        BotResponse: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: true
+            },
+            message: {
+              type: 'string',
+              example: 'Bot creado exitosamente'
+            },
+            data: {
+              $ref: '#/components/schemas/Bot'
+            }
+          }
+        },
+        BotListResponse: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: true
+            },
+            data: {
+              type: 'array',
+              items: {
+                $ref: '#/components/schemas/Bot'
+              }
+            },
+            count: {
+              type: 'integer',
+              example: 3
+            }
+          }
         }
       }
     },
@@ -249,22 +322,34 @@ const options = {
         description: 'Gestión de archivos multimedia'
       },
       {
-        name: 'Permissions',
-        description: 'Gestión de permisos de chat'
-      },
-      {
         name: 'Tags',
         description: 'Gestión de etiquetas para organización de chats'
+      },
+      {
+        name: 'Bots',
+        description: 'Sistema de distribución automática de mensajes'
+      },
+      {
+        name: 'Bot Rules',
+        description: 'Gestión de reglas para bots (opciones y palabras clave)'
+      },
+      {
+        name: 'Bot Rules - Public',
+        description: 'Endpoints públicos para procesamiento de mensajes de bot'
+      },
+      {
+        name: 'Bot Sessions',
+        description: 'Historial y estadísticas de sesiones de bot con chats'
       }
     ]
   },
   apis: [
     './src/routes/authRoutes.js',
-    './src/routes/permissionRoutes.js',
     './src/routes/whatsappRoutes.js',
     './src/routes/chatRoutes.js',
     './src/routes/mediaRoutes.js',
-    './src/routes/tagRoutes.js'
+    './src/routes/tagRoutes.js',
+    './src/routes/botRoutes.js'
   ]
 };
 

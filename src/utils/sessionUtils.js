@@ -33,21 +33,53 @@ const injectWhatsAppClient = (sessionManager) => async (req, res, next) => {
     const tenantId = await getTenantId(req.user);
     const whatsappClient = sessionManager.getSession(tenantId);
 
-    // Una sesión es válida si existe en el sessionManager
-    // No validamos isConnected porque puede estar temporalmente desconectado
-    // (ej: después de refrescar la página) pero la sesión sigue siendo válida.
+    // ✅ PASO 1: Validar que existe la sesión
     if (!whatsappClient) {
+      console.warn(`[${tenantId}] ⚠️ Sesión no encontrada en SessionManager. Usuario debe hacer /init`);
       return res.status(503).json({
         success: false,
         error: 'La sesión de WhatsApp para tu organización no está activa. Inicia sesión en /api/whatsapp/init'
       });
     }
 
-    // Inyectar el cliente de WhatsApp en el objeto de la petición
+    // ✅ PASO 2: Obtener el estado REAL del cliente
+    const status = whatsappClient.getStatus();
+    
+    // Solo loguear si hay error o desconexión
+    if (!status.isConnected || !status.isReady) {
+      console.warn(`[${tenantId}] ⚠️ Status check - state: ${status.status}, isConnected: ${status.isConnected}, isReady: ${status.isReady}`);
+    }
+
+    // ✅ PASO 3: Validar que está REALMENTE conectado
+    // Esto es importante porque WhatsApp Web puede desconectarse del teléfono
+    if (!status.isConnected) {
+      console.warn(`[${tenantId}] ⚠️ Cliente NO conectado. Estado: ${status.status}`);
+      return res.status(503).json({
+        success: false,
+        error: 'La sesión de WhatsApp está desconectada del teléfono. Por favor, reconecta en /api/whatsapp/init'
+      });
+    }
+
+    // ✅ PASO 4: Validar que está listo (inicialización completa)
+    // Si no está listo, probablemente está iniciando
+    if (!status.isReady) {
+      console.warn(`[${tenantId}] ⚠️ Cliente conectado pero NO ready. Posiblemente iniciando...`);
+      return res.status(503).json({
+        success: false,
+        error: 'La sesión de WhatsApp está iniciando. Espera unos segundos e intenta nuevamente.'
+      });
+    }
+
+    // ✅ TODO OK - Inyectar el cliente
     req.whatsappClient = whatsappClient;
     next();
   } catch (error) {
-    return res.status(500).json({ success: false, error: 'Error al obtener la sesión de WhatsApp.', details: error.message });
+    console.error(`❌ Error en injectWhatsAppClient:`, error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Error al obtener la sesión de WhatsApp.', 
+      details: error.message 
+    });
   }
 };
 

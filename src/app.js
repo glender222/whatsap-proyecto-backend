@@ -13,18 +13,19 @@ const sessionManager = require("./services/sessionManager"); // Reemplazar Whats
 const SocketHandler = require("./sockets/socketHandler");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const User = require("./models/User");
-const ChatPermission = require("./models/ChatPermission");
 const Tag = require("./models/Tag");
 const ChatTag = require("./models/ChatTag");
+const Bot = require("./models/Bot");
 const stateManager = require("./services/stateManager");
+const { initializeBotRules } = require("./models/initBotModality");
 
 // Importar rutas
 const createAuthRoutes = require("./routes/authRoutes");
 const createChatRoutes = require("./routes/chatRoutes");
 const createMediaRoutes = require("./routes/mediaRoutes");
-const permissionRoutes = require("./routes/permissionRoutes");
 const createWhatsAppRoutes = require("./routes/whatsappRoutes");
 const tagRoutes = require("./routes/tagRoutes");
+const botRoutes = require("./routes/botRoutes");
 
 class App {
   constructor() {
@@ -113,9 +114,10 @@ class App {
   async initializeDatabase() {
     try {
       await User.createTableIfNotExists();
-      await ChatPermission.createTableIfNotExists();
       await Tag.createTableIfNotExists();
       await ChatTag.createTableIfNotExists();
+      await Bot.createTableIfNotExists();
+      await initializeBotRules();
       console.log('✅ Base de datos inicializada');
     } catch (error) {
       console.error('❌ Error inicializando BD:', error);
@@ -127,9 +129,9 @@ class App {
     this.app.use("/api/auth", createAuthRoutes(this.sessionManager));
     this.app.use("/api/chats", createChatRoutes(this.sessionManager));
     this.app.use("/api/media", createMediaRoutes(this.sessionManager));
-    this.app.use("/api/permissions", permissionRoutes); // Este no necesita el servicio
     this.app.use("/api/whatsapp", createWhatsAppRoutes(this.sessionManager));
     this.app.use("/api/tags", tagRoutes(this.sessionManager));
+    this.app.use("/api/bots", botRoutes);
 
     // Health check
     this.app.get('/health', (req, res) => {

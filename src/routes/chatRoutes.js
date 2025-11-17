@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const ChatController = require('../controllers/chatController');
 const TagController = require('../controllers/tagController');
+const botSessionController = require('../controllers/botSessionController');
 const config = require('../config');
 const { validateJWT } = require('../middleware/authMiddleware');
 const { injectWhatsAppClient } = require('../utils/sessionUtils');
@@ -146,6 +147,112 @@ function createChatRoutes(sessionManager) { // Recibe sessionManager
    *         description: Lista de etiquetas del chat.
    */
   router.get('/:chatId/tags', TagController.getTagsByChat);
+
+  /**
+   * @swagger
+   * /chats/{chatId}/sessions:
+   *   get:
+   *     tags: [Bot Sessions]
+   *     summary: Obtener historial de sesiones de bot de un chat
+   *     description: Devuelve el historial de interacciones del bot con este chat específico
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: chatId
+   *         required: true
+   *         schema: { type: string }
+   *       - in: query
+   *         name: limit
+   *         schema: { type: integer, default: 20 }
+   *     responses:
+   *       200:
+   *         description: Historial de sesiones del chat
+   */
+  router.get('/:chatId/sessions', botSessionController.getChatSessions);
+
+  /**
+   * @swagger
+   * /chats/{chatId}/sessions/complete:
+   *   post:
+   *     tags: [Bot Sessions]
+   *     summary: Completar sesión activa de un chat (finalizar atención)
+   *     description: Marca la sesión activa del bot como completada, permitiendo que el bot se reactive si el cliente vuelve a escribir
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: chatId
+   *         required: true
+   *         schema: { type: string }
+   *         example: "51912345678@c.us"
+   *     responses:
+   *       200:
+   *         description: Sesión completada exitosamente
+   *       404:
+   *         description: No hay sesión activa para este chat
+   *       403:
+   *         description: No tienes permiso para modificar esta sesión
+   */
+  router.post('/:chatId/sessions/complete', botSessionController.completeSessionByChat);
+
+  /**
+   * @swagger
+   * /chats/{chatId}/session/status:
+   *   get:
+   *     tags: [Bot Sessions]
+   *     summary: Obtener estado actual de sesión de un chat
+   *     description: Devuelve el estado de la sesión activa (pending/active) o null si no hay sesión. Útil para mostrar indicadores visuales en el frontend.
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: chatId
+   *         required: true
+   *         schema: { type: string }
+   *         example: "51912345678@c.us"
+   *     responses:
+   *       200:
+   *         description: Estado de sesión obtenido
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 chatId:
+   *                   type: string
+   *                 hasActiveSession:
+   *                   type: boolean
+   *                 status:
+   *                   type: string
+   *                   enum: [pending, active, null]
+   *                   nullable: true
+   *                 sessionId:
+   *                   type: integer
+   *                   nullable: true
+   *                 botId:
+   *                   type: integer
+   *                   nullable: true
+   *                 botName:
+   *                   type: string
+   *                   nullable: true
+   *                 tagId:
+   *                   type: integer
+   *                   nullable: true
+   *                 tagName:
+   *                   type: string
+   *                   nullable: true
+   *                 selectedOption:
+   *                   type: integer
+   *                   nullable: true
+   *                 createdAt:
+   *                   type: string
+   *                   format: date-time
+   *                   nullable: true
+   */
+  router.get('/:chatId/session/status', botSessionController.getSessionStatus);
 
   return router;
 }

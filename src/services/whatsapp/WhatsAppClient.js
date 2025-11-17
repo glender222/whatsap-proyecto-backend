@@ -23,7 +23,7 @@ class WhatsAppClient {
     this.qrImage = "";
     this.isConnected = false;
     this.socketIO = null;
-    this.isIntentionalLogout = false;
+    this.isIntentionalLogout = false; // Flag para distinguir logout intencional de desconexiones automaticas
     this.cacheFilePath = path.join(config.whatsapp.sessionPath, `session-${this.adminId}`, '.chats-cache.json');
     this._pollInterval = null;
     
@@ -132,23 +132,38 @@ class WhatsAppClient {
   getStatus() {
     let state = "DISCONNECTED";
     let isReady = false;
+    let isConnected = false;
     
     try {
-      if (this.client && this.isConnected) {
-        state = this.client.getState() || "DISCONNECTED";
+      if (this.client) {
+        // Obtener el estado REAL del cliente de WhatsApp
+        // ⚠️ getState() puede devolver una Promise en algunas versiones
+        let stateValue = this.client.getState();
+        if (stateValue && typeof stateValue === 'object' && typeof stateValue.then === 'function') {
+          // Es una Promise - usar el flag isConnected como fallback
+          state = this.isConnected ? "CONNECTED" : "DISCONNECTED";
+        } else {
+          state = stateValue || "DISCONNECTED";
+        }
+        
+        // Validar si está realmente conectado (basado en el estado del cliente)
+        isConnected = state === "CONNECTED" || (this.client.info && state !== "DISCONNECTED");
+        
+        // Validar si está listo para usar (tiene info del usuario)
         isReady = this.client.info ? true : false;
       }
     } catch (error) {
       console.warn("Error obteniendo estado:", error.message);
       state = "DISCONNECTED";
       isReady = false;
+      isConnected = false;
     }
     
     return {
       status: state,
-      isReady: isReady && this.isConnected,
+      isReady: isReady,
       hasQR: this.qrImage ? true : false,
-      isConnected: this.isConnected
+      isConnected: isConnected
     };
   }
 
@@ -165,15 +180,18 @@ class WhatsAppClient {
    * @returns {Object|null} - Información del usuario
    */
   getMyInfo() {
-    // Verificar múltiples condiciones para asegurar que hay sesión válida
-    if (!this.client || 
-        !this.client.info || 
-        !this.isConnected || 
-        this.client.getState() === "DISCONNECTED") {
+    // Verificar que existe el cliente y tiene información válida
+    if (!this.client || !this.client.info) {
       return null;
     }
     
     try {
+      // Validar que el estado no sea DISCONNECTED
+      const state = this.client.getState();
+      if (state === "DISCONNECTED") {
+        return null;
+      }
+      
       return {
         id: this.client.info.wid._serialized,
         user: this.client.info.wid.user,

@@ -1,7 +1,7 @@
 const redis = require('redis');
 const config = require('../config');
 
-const LOCK_TIMEOUT_SECONDS = 10; // Tiempo que una instancia mantiene el lock
+const LOCK_TIMEOUT_SECONDS = 120; // 2 minutos - Tiempo que una instancia mantiene el lock (optimizado para sesiones de larga duración)
 
 let instance = null;
 

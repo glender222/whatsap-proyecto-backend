@@ -55,6 +55,38 @@ function createWhatsAppRoutes(sessionManager) { // Recibe sessionManager
    */
   router.get('/qr', validateJWT, requireAdmin, whatsAppController.getQR);
 
+  /**
+   * GET /whatsapp/debug/sessions
+   * DEBUG: Ver todas las sesiones activas en SessionManager
+   */
+  router.get('/debug/sessions', validateJWT, requireAdmin, (req, res) => {
+    try {
+      const allSessions = sessionManager.getAllSessions();
+      const sessions = {};
+      
+      allSessions.forEach((client, adminId) => {
+        const status = client.getStatus();
+        sessions[adminId] = {
+          exists: true,
+          isConnected: status.isConnected,
+          isReady: status.isReady,
+          status: status.status,
+          hasQR: status.hasQR
+        };
+      });
+      
+      res.json({
+        success: true,
+        message: `Hay ${allSessions.size} sesión(es) activa(s)`,
+        sessions
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
 
   return router;
 }

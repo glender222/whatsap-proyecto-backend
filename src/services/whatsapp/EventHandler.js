@@ -1,9 +1,8 @@
 const qrcode = require("qrcode");
-const ChatPermission = require("../../models/ChatPermission");
 const stateManager = require('../stateManager');
 const User = require('../../models/User');
 
-const LOCK_REFRESH_INTERVAL_MS = 8000; // 8 segundos
+const LOCK_REFRESH_INTERVAL_MS = 30000; // 30 segundos (25% del timeout de 120s) - Optimizado para sesiones de larga duración
 
 class EventHandler {
   constructor(whatsappClient, onDisconnectedCallback, tempLockRefreshInterval = null) {
@@ -57,6 +56,7 @@ class EventHandler {
       console.log(`[${this.adminId}] Handover: Lock refrescado inmediatamente.`);
 
       // 3. Iniciar el proceso de renovación de lock permanente, gestionado por EventHandler.
+      // ⚠️ Importante: Esto también se ejecuta en reconexiones automáticas
       this.startLockRefresh();
 
       this.whatsappClient.isConnected = true;
@@ -92,22 +92,28 @@ class EventHandler {
   }
 
   async handleDisconnected(reason) {
-    console.log(`[${this.adminId}] WhatsApp desconectado:`, reason);
+    console.log(`[${this.adminId}] ⚠️ WhatsApp desconectado. Motivo: ${reason}`);
     
-    // Detener el refresco del lock ANTES de liberar el lock
+    // ⚠️ Si es un logout INTENCIONAL, el cliente se encargará de limpiar
+    if (this.whatsappClient.isIntentionalLogout) {
+      console.log(`[${this.adminId}] Es un logout intencional - Ignorando handleDisconnected`);
+      return;
+    }
+    
+    // Si es una desconexión automática/temporal, mantener la sesión
+    console.log(`[${this.adminId}] Desconexión automática - Manteniendo sesión en SessionManager`);
+    
+    // Detener el refresco del lock (se reanudará cuando reconecte)
     this.stopLockRefresh();
-
-    // Liberar el lock para que otra instancia/proceso pueda tomar el control
-    await stateManager.releaseLock(this.adminId);
-    this.onDisconnected(); // Callback para notificar al SessionManager
 
     this.whatsappClient.isConnected = false;
     
+    // Notificar al frontend que se desconectó pero NO que reinicie
     if (this.whatsappClient.socketIO) {
-      // Notificar a todo el tenant que la sesión se ha desconectado
-      this.whatsappClient.socketIO.to(this.tenantRoom).emit("session_status", {
+      this.whatsappClient.socketIO.to(this.tenantRoom).emit("whatsapp_status", {
         status: "disconnected",
-        reason
+        reason,
+        message: "WhatsApp se desconectó. Reconectando automáticamente..."
       });
     }
     
@@ -130,14 +136,22 @@ class EventHandler {
     
     const formattedMessage = this.whatsappClient.messageHandler.formatMessage(msg, chatId);
     
-    // Obtener la lista de usuarios (admin + empleados) que deben recibir el mensaje
-    const permittedEmployeeIds = await ChatPermission.findByChatId(chatId);
-    const recipientIds = [this.adminId, ...permittedEmployeeIds].map(id => id.toString());
-
-    if (recipientIds.length > 0) {
-      // Emitir el mensaje a las salas de usuario individuales de los destinatarios
-      this.whatsappClient.socketIO.to(recipientIds).emit("message", formattedMessage);
+    // 🤖 BOT: Procesar mensaje entrante para distribución automática
+    try {
+      const BotAutoDistributionService = require('../botAutoDistributionService');
+      await BotAutoDistributionService.processIncomingMessage(
+        msg,
+        this.whatsappClient, // Cliente para enviar respuestas
+        this.adminId // Tenant ID
+      );
+    } catch (botError) {
+      console.error(`[${this.adminId}] Error en bot auto-distribution:`, botError);
+      // No detener el flujo normal si el bot falla
     }
+    
+    // Emitir el mensaje a todos los empleados del admin (todos ven todos los chats)
+    // El frontend ya filtra por permisos de chat si es necesario
+    this.whatsappClient.socketIO.to(this.tenantRoom).emit("message", formattedMessage);
 
     // Notificar a todo el tenant que la lista de chats ha sido actualizada
     // El frontend se encargará de refrescar su lista, que ya viene filtrada por el backend.

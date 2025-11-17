@@ -1,5 +1,4 @@
 const { asyncHandler } = require('../middleware/errorHandler');
-const ChatPermission = require('../models/ChatPermission');
 const TagService = require('../services/tagService');
 const fs = require('fs');
 

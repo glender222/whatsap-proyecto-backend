@@ -28,38 +28,63 @@ class SessionManager {
    * @returns {Promise<WhatsAppClient>}
    */
   async startSession(adminId) {
-    // 1. Prevenir Race Conditions: Verificar si ya se está iniciando una sesión para este admin
-    if (this.startingSessions.has(adminId)) {
-      console.warn(`[SessionManager] Intento duplicado de iniciar sesión para el admin ${adminId} mientras ya estaba en proceso.`);
-      throw new Error(`La sesión para el admin ${adminId} ya se está iniciando.`);
-    }
+    // 1. PRIMERO: Verificar si la sesión YA EXISTE
     if (this.sessions.has(adminId)) {
-        return this.sessions.get(adminId);
+      console.log(`[SessionManager] Sesión para ${adminId} ya existe. Devolviéndola.`);
+      return this.sessions.get(adminId);
+    }
+
+    // 2. SEGUNDO: Verificar si ya se está iniciando (evitar race conditions)
+    if (this.startingSessions.has(adminId)) {
+      console.log(`[SessionManager] Sesión para ${adminId} ya se está iniciando. Esperando...`);
+      // Esperar hasta que se agregue a sessions (máximo 30 segundos)
+      return new Promise((resolve, reject) => {
+        const checkInterval = setInterval(() => {
+          if (this.sessions.has(adminId)) {
+            clearInterval(checkInterval);
+            resolve(this.sessions.get(adminId));
+          }
+        }, 100);
+
+        // Timeout después de 30 segundos
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          if (!this.sessions.has(adminId)) {
+            reject(new Error(`Timeout esperando a que se inicie la sesión para ${adminId}`));
+          }
+        }, 30000);
+      });
     }
 
     this.startingSessions.add(adminId); // Poner el "cerrojo"
     let tempLockRefreshInterval = null;
 
     try {
-      // 2. Adquirir el lock distribuido
+      // 3. Adquirir el lock distribuido (para producción con múltiples instancias)
       const lockAcquired = await stateManager.acquireLock(adminId);
       if (!lockAcquired) {
         throw new Error(`No se pudo adquirir el lock para iniciar la sesión del admin ${adminId}. Otra instancia tiene el control.`);
       }
 
-      // 3. Iniciar el refresco TEMPORAL del lock
+      // 4. Iniciar el refresco TEMPORAL del lock
       tempLockRefreshInterval = setInterval(() => {
         stateManager.refreshLock(adminId).catch(err => {
           console.error(`[SessionManager] Error crítico: Fallo al refrescar el lock TEMPORAL para ${adminId}.`, err);
           clearInterval(tempLockRefreshInterval);
         });
-      }, 8000);
+      }, 30000);
 
       console.log(`[SessionManager] Lock adquirido para ${adminId}. Iniciando cliente...`);
 
       const onDisconnected = () => {
-        console.log(`[SessionManager] Sesión para ${adminId} desconectada. Limpiando...`);
-        this.sessions.delete(adminId);
+        // ⚠️ IMPORTANTE: No eliminamos la sesión aquí.
+        // Una desconexión de WhatsApp Web puede ser temporal (reconecta automáticamente).
+        // Solo debemos eliminar la sesión cuando es un logout() INTENCIONAL.
+        console.log(`[SessionManager] WhatsApp para ${adminId} se desconectó temporalmente. Sesión persiste.`);
+        // Liberar el lock para que otra instancia pueda tomar el control si es necesario
+        stateManager.releaseLock(adminId).catch(err => {
+          console.warn(`[SessionManager] No se pudo liberar lock para ${adminId}:`, err.message);
+        });
       };
 
       const client = new WhatsAppClient(adminId, onDisconnected, tempLockRefreshInterval);
@@ -83,7 +108,7 @@ class SessionManager {
       await stateManager.releaseLock(adminId);
       throw error;
     } finally {
-      // 4. Quitar el "cerrojo" sin importar si hubo éxito o error
+      // 5. Quitar el "cerrojo" sin importar si hubo éxito o error
       this.startingSessions.delete(adminId);
     }
   }

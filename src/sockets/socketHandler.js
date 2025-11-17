@@ -1,6 +1,5 @@
 const { verifyToken } = require('../utils/jwt');
 const { getTenantId } = require('../utils/sessionUtils');
-const ChatPermission = require('../models/ChatPermission');
 
 class SocketHandler {
   constructor(sessionManager) {
@@ -33,12 +32,19 @@ class SocketHandler {
         socket.join(`tenant:${tenantId}`);
         
         // 3. Una sesión es válida si existe en el sessionManager.
-        // No validamos isConnected porque puede estar temporalmente desconectado
-        // (ej: después de refrescar la página) pero la sesión sigue siendo válida.
+        // ⚠️ IMPORTANTE: No validamos estado de conexión aquí porque:
+        // - La sesión WhatsApp es independiente del socket
+        // - Si hace reload, socket se desconecta pero sesión persiste
+        // - Las validaciones de conexión se hacen en REST API cuando sea necesario
         if (!whatsappClient) {
-          socket.emit('session_status', { status: 'disconnected', message: 'La sesión de WhatsApp para tu organización no está activa. Inicia sesión en /api/whatsapp/init' });
+          console.log(`[${tenantId}] ⚠️ Socket conectado pero NO hay sesión WhatsApp activa. Usuario debe ejecutar /init`);
+          socket.emit('session_status', { 
+            status: 'disconnected', 
+            message: 'La sesión de WhatsApp para tu organización no está activa. Inicia sesión en /api/whatsapp/init' 
+          });
         } else {
-          // 4. Si hay sesión, enviar la lista de chats inicial.
+          // 4. Si hay sesión, enviar la lista de chats inicial
+          console.log(`[${tenantId}] ✅ Socket conectado y sesión WhatsApp existe. Enviando chats...`);
           this._sendFilteredChats(socket, whatsappClient);
         }
 
@@ -86,21 +92,13 @@ class SocketHandler {
   }
 
   async _sendFilteredChats(socket, whatsappClient) {
-    const { userId, rol } = socket.user;
-
     try {
       const allChats = await whatsappClient.getChats();
-
-      if (rol === 'ADMIN') {
-        return socket.emit("chats-updated", allChats);
-      }
-
-      const permittedChatIds = await ChatPermission.findByEmployeeId(userId);
-      const filteredChats = allChats.filter(chat => permittedChatIds.includes(chat.id._serialized));
-
-      socket.emit("chats-updated", filteredChats);
+      // Todos los empleados ven todos los chats de su administrador
+      // (No hay control granular de permisos por chat)
+      socket.emit("chats-updated", allChats);
     } catch (error) {
-      console.error('Error enviando chats filtrados:', error);
+      console.error('Error enviando chats:', error);
       socket.emit('error', { message: 'No se pudo obtener la lista de chats.' });
     }
   }

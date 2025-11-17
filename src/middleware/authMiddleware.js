@@ -25,7 +25,7 @@ const validateJWT = asyncHandler(async (req, res, next) => {
       details: 'El token no es válido o ha expirado'
     });
   }
-
+  
   // Agregar payload al request
   req.user = payload;
   next();

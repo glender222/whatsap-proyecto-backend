@@ -1,5 +1,4 @@
 const { asyncHandler } = require('../middleware/errorHandler');
-const ChatPermission = require('../models/ChatPermission');
 const fs = require('fs');
 const path = require('path');
 
@@ -31,14 +30,6 @@ class MediaController {
       }
 
       const chatId = message.fromMe ? message.to : message.from;
-
-      // Verificar permiso si es empleado
-      if (rol === 'EMPLEADO') {
-        const hasPermission = await ChatPermission.hasPermission(userId, chatId);
-        if (!hasPermission) {
-          return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
-        }
-      }
 
       // Pasar el messageId (string), no el objeto message
       media = await whatsappClient.mediaHandler.downloadMedia(messageId);
@@ -177,10 +168,8 @@ class MediaController {
 
     // Verificar permiso si es empleado
     if (rol === 'EMPLEADO') {
-      const hasPermission = await ChatPermission.hasPermission(userId, chatId);
-      if (!hasPermission) {
-        return res.status(403).json({ success: false, error: 'Acceso denegado a este chat' });
-      }
+      // Los empleados pueden acceder a cualquier chat de su administrador
+      // No hay validación granular de permisos por chat
     }
 
     try {
